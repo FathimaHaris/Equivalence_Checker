@@ -1,0 +1,36 @@
+[package]
+name = "equivalence_checker"
+version = "0.1.0"
+edition = "2021"
+authors = ["Fathima A A"]
+description = "LLVM-Based Cross-Language Semantic Equivalence Checker for C and Rust"
+
+[[bin]]
+name = "equivalence_checker"
+path = "src/main.rs"
+
+[dependencies]
+# Command line argument parsing
+clap = { version = "4.4", features = ["derive"] }
+
+# Z3 SMT Solver bindings
+z3 = "0.12"
+
+# JSON handling (for reports and path summaries)
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Colored terminal output
+colored = "2.0"
+
+# Logging
+log = "0.4"
+env_logger = "0.10"
+
+[dev-dependencies]
+# For integration tests
+tempfile = "3.8"
