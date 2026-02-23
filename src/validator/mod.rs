@@ -1,37 +1,29 @@
 // src/validator/mod.rs
 // ═══════════════════════════════════════════════════════
 // Module 1: Input Validation
-// Validates source files, checks function exists
+// Checks file existence, syntax, and function signatures
 // ═══════════════════════════════════════════════════════
 
 use crate::types::{AnalysisConfig, ValidationResult, FunctionSignature, CheckerError};
 use anyhow::Result;
-use std::fs;
-use std::path::Path;
 use std::process::Command;
+use std::path::Path;
 
 /// Main validation entry point
 pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
     let mut errors = Vec::new();
 
-    println!("  Checking C file...");
-    
-    // Check C file exists
+    // Step 1: Check file existence
+    println!("  Checking file existence...");
     if !Path::new(&config.c_file).exists() {
         errors.push(format!("C file not found: {}", config.c_file));
-        return Ok(ValidationResult {
-            success: false,
-            c_signature: None,
-            rust_signature: None,
-            errors,
-        });
     }
-
-    println!("  Checking Rust file...");
-    
-    // Check Rust file exists
     if !Path::new(&config.rust_file).exists() {
         errors.push(format!("Rust file not found: {}", config.rust_file));
+    }
+
+    // If files don't exist, stop here
+    if !errors.is_empty() {
         return Ok(ValidationResult {
             success: false,
             c_signature: None,
@@ -40,18 +32,18 @@ pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
         });
     }
 
-    println!("  Validating C syntax...");
-    
-    // Validate C syntax
-    if let Err(e) = validate_c_syntax(&config.c_file) {
-        errors.push(format!("C syntax error: {}", e));
+    // Step 2: Check C syntax
+    println!("  Checking C syntax...");
+    match check_c_syntax(&config.c_file) {
+        Ok(_) => {},
+        Err(e) => errors.push(format!("C syntax error: {}", e)),
     }
 
-    println!("  Validating Rust syntax...");
-    
-    // Validate Rust syntax
-    if let Err(e) = validate_rust_syntax(&config.rust_file) {
-        errors.push(format!("Rust syntax error: {}", e));
+    // Step 3: Check Rust syntax  
+    println!("  Checking Rust syntax...");
+    match check_rust_syntax(&config.rust_file) {
+        Ok(_) => {},
+        Err(e) => errors.push(format!("Rust syntax error: {}", e)),
     }
 
     // If syntax errors, stop here
@@ -64,46 +56,48 @@ pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
         });
     }
 
-    println!("  Looking for function '{}'...", config.function_name);
-    
-    // Check function exists in C
+    // Step 4: Find function in C file
+    println!("  Looking for function '{}' in C...", config.function_name);
     let c_sig = match find_c_function(&config.c_file, &config.function_name) {
-        Ok(sig) => {
-            println!("    Found in C: {} with {} parameters", 
-                sig.name, sig.params.len());
-            Some(sig)
-        }
+        Ok(sig) => Some(sig),
         Err(e) => {
-            errors.push(format!("C function '{}' not found: {}", 
-                config.function_name, e));
+            errors.push(format!("C function not found: {}", e));
             None
         }
     };
 
-    // Check function exists in Rust
+    // Step 5: Find function in Rust file
+    println!("  Looking for function '{}' in Rust...", config.function_name);
     let rust_sig = match find_rust_function(&config.rust_file, &config.function_name) {
-        Ok(sig) => {
-            println!("    Found in Rust: {} with {} parameters", 
-                sig.name, sig.params.len());
-            Some(sig)
-        }
+        Ok(sig) => Some(sig),
         Err(e) => {
-            errors.push(format!("Rust function '{}' not found: {}", 
-                config.function_name, e));
+            errors.push(format!("Rust function not found: {}", e));
             None
         }
     };
 
-    // Check signatures are compatible
+    // Step 6: Compare signatures if both found
     if let (Some(ref c), Some(ref r)) = (&c_sig, &rust_sig) {
+        println!("  Comparing function signatures...");
+        
+        // Check parameter count
         if c.params.len() != r.params.len() {
             errors.push(format!(
                 "Parameter count mismatch: C has {}, Rust has {}",
                 c.params.len(), r.params.len()
             ));
         }
+
+        // Check return types are compatible
+        if !are_types_compatible(&c.return_type, &r.return_type) {
+            errors.push(format!(
+                "Return type mismatch: C returns '{}', Rust returns '{}'",
+                c.return_type, r.return_type
+            ));
+        }
     }
 
+    // Build result
     Ok(ValidationResult {
         success: errors.is_empty(),
         c_signature: c_sig,
@@ -112,176 +106,138 @@ pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
     })
 }
 
-// ───────────────────────────────────────────────────────
-// C FILE VALIDATION
-// ───────────────────────────────────────────────────────
+// C VALIDATION HELPERS
 
-/// Check C syntax using clang
-fn validate_c_syntax(c_file: &str) -> Result<()> {
+fn check_c_syntax(c_file: &str) -> Result<()> {
     let output = Command::new("clang")
-        .args(&["-fsyntax-only", c_file])
+        .arg("-fsyntax-only")
+        .arg(c_file)
         .output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(anyhow::anyhow!("{}", stderr));
+        return Err(CheckerError::ValidationError(stderr.to_string()).into());
     }
-
     Ok(())
 }
 
-/// Find function in C file
 fn find_c_function(c_file: &str, func_name: &str) -> Result<FunctionSignature> {
-    let content = fs::read_to_string(c_file)?;
+    let content = std::fs::read_to_string(c_file)?;
     
-    // Very simple pattern matching (not perfect but works for basic cases)
     for line in content.lines() {
-        let trimmed = line.trim();
-        
-        // Look for function definition like: int compute(int x, int y)
-        if trimmed.contains(func_name) && trimmed.contains('(') {
-            // Extract function signature
-            if let Some(sig) = extract_c_signature(trimmed, func_name) {
-                return Ok(sig);
-            }
+        let line = line.trim();
+        if line.starts_with("//") || line.is_empty() {
+            continue;
+        }
+        if line.contains(func_name) && line.contains('(') {
+            let sig = extract_c_signature(line, func_name)?;
+            return Ok(sig);
         }
     }
-
-    Err(anyhow::anyhow!("Function not found"))
+    
+    Err(CheckerError::ValidationError(
+        format!("Function '{}' not found", func_name)
+    ).into())
 }
 
-/// Extract signature from C function line
-fn extract_c_signature(line: &str, func_name: &str) -> Option<FunctionSignature> {
-    // Find opening paren
-    let paren_start = line.find('(')?;
-    let paren_end = line.find(')')?;
-
-    // Extract parameter string
-    let params_str = &line[paren_start + 1..paren_end];
+fn extract_c_signature(line: &str, func_name: &str) -> Result<FunctionSignature> {
+    let func_pos = line.find(func_name).unwrap();
+    let before = &line[..func_pos].trim();
+    let return_type = before.split_whitespace().last().unwrap_or("void").to_string();
     
-    // Split by comma and extract parameter types
-    let params: Vec<String> = params_str
-        .split(',')
-        .map(|p| p.trim())
-        .filter(|p| !p.is_empty() && *p != "void")
-        .map(|p| {
-            // Extract type (everything before last word)
-            p.split_whitespace()
-                .take_while(|&w| w != "const" && !w.starts_with('*'))
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .collect();
-
-    // Extract return type (rough heuristic)
-    let return_type = if line.contains("void") && line.find("void")? < paren_start {
-        "void".to_string()
-    } else if line.contains("int") && line.find("int")? < paren_start {
-        "int".to_string()
+    let pstart = line.find('(').unwrap();
+    let pend = line.find(')').unwrap();
+    let params_str = line[pstart + 1..pend].trim();
+    
+    let params = if params_str.is_empty() || params_str == "void" {
+        vec![]
     } else {
-        "unknown".to_string()
+        params_str.split(',').map(|p| p.trim().to_string()).collect()
     };
-
-    Some(FunctionSignature {
+    
+    Ok(FunctionSignature {
         name: func_name.to_string(),
         params,
         return_type,
     })
 }
 
-// ───────────────────────────────────────────────────────
-// RUST FILE VALIDATION
-// ───────────────────────────────────────────────────────
+// RUST VALIDATION HELPERS
 
-/// Check Rust syntax using rustc
-fn validate_rust_syntax(rust_file: &str) -> Result<()> {
+    
+    
+fn check_rust_syntax(rust_file: &str) -> Result<()> {
+    // Compile-check only (no linking), stable-compatible
+    // We emit metadata to avoid producing a full binary.
     let output = Command::new("rustc")
-        .args(&["--crate-type", "lib", "-Zparse-only", rust_file])
+        .arg("--crate-type=lib")
+        .arg("--emit=metadata")
+        .arg(rust_file)
+        .arg("-o")
+        .arg("/tmp/rust_syntax_check.rmeta")
         .output()?;
 
-    // rustc parse-only might not work, try simpler check
     if !output.status.success() {
-        // Try just checking if it compiles to IR
-        let output2 = Command::new("rustc")
-            .args(&["--emit=llvm-ir", "--crate-type", "lib", rust_file, "-o", "/tmp/test.ll"])
-            .output()?;
-        
-        if !output2.status.success() {
-            let stderr = String::from_utf8_lossy(&output2.stderr);
-            return Err(anyhow::anyhow!("{}", stderr));
-        }
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CheckerError::ValidationError(stderr.to_string()).into());
     }
-
     Ok(())
 }
 
-/// Find function in Rust file
 fn find_rust_function(rust_file: &str, func_name: &str) -> Result<FunctionSignature> {
-    let content = fs::read_to_string(rust_file)?;
+    let content = std::fs::read_to_string(rust_file)?;
     
     for line in content.lines() {
-        let trimmed = line.trim();
-        
-        // Look for function definition: fn compute(
-        if trimmed.starts_with("fn") && trimmed.contains(func_name) && trimmed.contains('(') {
-            if let Some(sig) = extract_rust_signature(trimmed, func_name) {
-                return Ok(sig);
-            }
+        let line = line.trim();
+        if line.starts_with("//") || line.is_empty() {
+            continue;
         }
-        
-        // Also check: pub fn compute(
-        if trimmed.starts_with("pub fn") && trimmed.contains(func_name) && trimmed.contains('(') {
-            if let Some(sig) = extract_rust_signature(trimmed, func_name) {
-                return Ok(sig);
-            }
+        if (line.starts_with("fn") || line.starts_with("pub fn")) && line.contains(func_name) {
+            let sig = extract_rust_signature(line, func_name)?;
+            return Ok(sig);
         }
     }
-
-    Err(anyhow::anyhow!("Function not found"))
+    
+    Err(CheckerError::ValidationError(
+        format!("Function '{}' not found", func_name)
+    ).into())
 }
 
-/// Extract signature from Rust function line
-fn extract_rust_signature(line: &str, func_name: &str) -> Option<FunctionSignature> {
-    let paren_start = line.find('(')?;
-    let paren_end = line.find(')')?;
-
-    let params_str = &line[paren_start + 1..paren_end];
+fn extract_rust_signature(line: &str, func_name: &str) -> Result<FunctionSignature> {
+    let pstart = line.find('(').unwrap();
+    let pend = line.find(')').unwrap();
+    let params_str = &line[pstart + 1..pend].trim();
     
-    // Extract parameter types
-    let params: Vec<String> = params_str
-        .split(',')
-        .map(|p| p.trim())
-        .filter(|p| !p.is_empty())
-        .map(|p| {
-            // Extract type after colon
-            if let Some(colon_pos) = p.find(':') {
-                p[colon_pos + 1..].trim().to_string()
-            } else {
-                "unknown".to_string()
-            }
-        })
-        .collect();
-
-    // Extract return type
+    let params = if params_str.is_empty() {
+        vec![]
+    } else {
+        params_str.split(',').map(|p| p.trim().to_string()).collect()
+    };
+    
     let return_type = if line.contains("->") {
-        if let Some(arrow_pos) = line.find("->") {
-            let after_arrow = &line[arrow_pos + 2..];
-            after_arrow
-                .trim()
-                .split_whitespace()
-                .next()
-                .unwrap_or("unknown")
-                .to_string()
-        } else {
-            "()".to_string()
-        }
+        let arrow = line.find("->").unwrap();
+        line[arrow + 2..].trim().split_whitespace().next()
+            .unwrap_or("()").trim_end_matches('{').trim().to_string()
     } else {
         "()".to_string()
     };
-
-    Some(FunctionSignature {
+    
+    Ok(FunctionSignature {
         name: func_name.to_string(),
         params,
         return_type,
     })
+}
+
+fn are_types_compatible(c_type: &str, rust_type: &str) -> bool {
+    let c = c_type.trim();
+    let r = rust_type.trim();
+    
+    if c == r { return true; }
+    
+    matches!((c, r),
+        ("int", "i32") | ("long", "i64") | ("short", "i16") | ("char", "i8") |
+        ("unsigned int", "u32") | ("unsigned long", "u64") |
+        ("float", "f32") | ("double", "f64") | ("void", "()")
+    )
 }
