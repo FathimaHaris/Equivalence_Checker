@@ -53,7 +53,7 @@ fn instrument_ir(input_bc: &str, output_bc: &str) -> Result<()> {
     let input_ll = input_bc.replace(".bc", "_temp.ll");
     
     // Disassemble bitcode to text
-    let dis_result = Command::new("llvm-dis")
+    let dis_result = Command::new("llvm-dis-15")
         .arg(input_bc)
         .arg("-o")
         .arg(&input_ll)
@@ -78,7 +78,7 @@ fn instrument_ir(input_bc: &str, output_bc: &str) -> Result<()> {
     fs::write(&input_ll, content)?;
 
     // Reassemble to bitcode
-    let as_result = Command::new("llvm-as")
+    let as_result = Command::new("llvm-as-15")
         .arg(&input_ll)
         .arg("-o")
         .arg(output_bc)

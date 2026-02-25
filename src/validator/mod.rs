@@ -8,6 +8,7 @@ use crate::types::{AnalysisConfig, ValidationResult, FunctionSignature, CheckerE
 use anyhow::Result;
 use std::process::Command;
 use std::path::Path;
+use serde_json::Value;
 
 /// Main validation entry point
 pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
@@ -57,13 +58,18 @@ pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
     }
 
     // Step 4: Find function in C file
+   
     println!("  Looking for function '{}' in C...", config.function_name);
     let c_sig = match find_c_function(&config.c_file, &config.function_name) {
-        Ok(sig) => Some(sig),
-        Err(e) => {
-            errors.push(format!("C function not found: {}", e));
-            None
-        }
+    Ok(sig) => {
+        println!("  C return type: {}", sig.return_type);
+        println!("  C params: {:?}", sig.params);
+        Some(sig)
+    }
+    Err(e) => {
+        errors.push(format!("C function not found: {}", e));
+        None
+    }
     };
 
     // Step 5: Find function in Rust file
@@ -121,40 +127,135 @@ fn check_c_syntax(c_file: &str) -> Result<()> {
     Ok(())
 }
 
-fn find_c_function(c_file: &str, func_name: &str) -> Result<FunctionSignature> {
-    let content = std::fs::read_to_string(c_file)?;
-    
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with("//") || line.is_empty() {
-            continue;
-        }
-        if line.contains(func_name) && line.contains('(') {
-            let sig = extract_c_signature(line, func_name)?;
-            return Ok(sig);
-        }
+// fn check_c_syntax(_c_file: &str) -> Result<()> {
+//     // Skip syntax check - we'll validate during compilation
+//     // This avoids KLEE header requirement at validation stage
+//     Ok(())
+// }
+
+
+
+pub fn find_c_function(c_file: &str, func_name: &str) -> Result<FunctionSignature> {
+    // 1) Ask clang for AST in JSON form
+    let output = Command::new("clang")
+        .args(["-Xclang", "-ast-dump=json", "-fsyntax-only"])
+        .arg(c_file)
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(CheckerError::ValidationError(format!(
+            "clang AST dump failed: {}",
+            stderr
+        ))
+        .into());
     }
+
+    // 2) Parse JSON
+    let json_text = String::from_utf8_lossy(&output.stdout);
+    let root: Value = serde_json::from_str(&json_text).map_err(|e| {
+        CheckerError::ValidationError(format!("Failed to parse clang AST JSON: {}", e))
+    })?;
+
+    // 3) Walk AST to find matching FunctionDecl
+    let func_node = find_function_decl(&root, func_name)
+        .ok_or_else(|| CheckerError::ValidationError(format!(
+            "Function '{}' not found in C AST",
+            func_name
+        )))?;
+
+    // 4) Extract signature info
+    extract_signature_from_function_decl(func_node, func_name)
     
-    Err(CheckerError::ValidationError(
-        format!("Function '{}' not found", func_name)
-    ).into())
 }
 
-fn extract_c_signature(line: &str, func_name: &str) -> Result<FunctionSignature> {
-    let func_pos = line.find(func_name).unwrap();
-    let before = &line[..func_pos].trim();
-    let return_type = before.split_whitespace().last().unwrap_or("void").to_string();
-    
-    let pstart = line.find('(').unwrap();
-    let pend = line.find(')').unwrap();
-    let params_str = line[pstart + 1..pend].trim();
-    
-    let params = if params_str.is_empty() || params_str == "void" {
-        vec![]
+fn find_function_decl<'a>(node: &'a Value, func_name: &str) -> Option<&'a Value> {
+    // Node kind?
+    let kind = node.get("kind")?.as_str().unwrap_or("");
+
+    if kind == "FunctionDecl" {
+        let name = node.get("name")?.as_str().unwrap_or("");
+        if name == func_name {
+            // Prefer a definition if possible:
+            // clang AST often includes "isImplicit", "isUsed", "loc", and body in "inner"
+            // If it has a CompoundStmt in inner, it's likely the definition.
+            if has_compound_body(node) {
+                return Some(node);
+            }
+            // Otherwise keep it as a candidate prototype
+            return Some(node);
+        }
+    }
+
+    // Recurse into children
+    if let Some(inner) = node.get("inner").and_then(|v| v.as_array()) {
+        for child in inner {
+            if let Some(found) = find_function_decl(child, func_name) {
+                return Some(found);
+            }
+        }
+    }
+
+    None
+}
+
+fn has_compound_body(node: &Value) -> bool {
+    if let Some(inner) = node.get("inner").and_then(|v| v.as_array()) {
+        inner.iter().any(|c| c.get("kind").and_then(|k| k.as_str()) == Some("CompoundStmt"))
     } else {
-        params_str.split(',').map(|p| p.trim().to_string()).collect()
+        false
+    }
+}
+
+fn extract_signature_from_function_decl(node: &Value, func_name: &str) -> Result<FunctionSignature> {
+    // Return type:
+    // In clang json, return type usually appears in node["type"]["qualType"] like:
+    // "int (int, int)"  OR sometimes return type via node["type"]["qualType"] parsing.
+    // Another field often exists: node["returnType"]["qualType"] (depends on clang version).
+    //
+    // We'll support both.
+    let return_type = if let Some(rt) = node.get("returnType").and_then(|v| v.get("qualType")).and_then(|v| v.as_str()) {
+        rt.to_string()
+    } else {
+        // Fallback: parse from "type.qualType": "RET (ARGS...)"
+        let qual = node
+            .get("type")
+            .and_then(|v| v.get("qualType"))
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| CheckerError::ValidationError("Missing type.qualType in FunctionDecl".into()))?;
+
+        // Example: "unsigned int (int, int)"
+        // Return type is everything before " ("
+        let ret = qual.split(" (").next().unwrap_or(qual).trim();
+        ret.to_string()
     };
-    
+
+    // Params: children with kind "ParmVarDecl"
+    let mut params: Vec<String> = Vec::new();
+    if let Some(inner) = node.get("inner").and_then(|v| v.as_array()) {
+        for child in inner {
+            if child.get("kind").and_then(|k| k.as_str()) == Some("ParmVarDecl") {
+                let ptype = child
+                    .get("type")
+                    .and_then(|t| t.get("qualType"))
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+
+                let pname = child.get("name").and_then(|n| n.as_str()).unwrap_or("");
+
+                // Store "type name" like C syntax
+                if pname.is_empty() {
+                    params.push(ptype.to_string());
+                } else {
+                    params.push(format!("{} {}", ptype, pname));
+                }
+            }
+        }
+    }
+
+   
+
+
     Ok(FunctionSignature {
         name: func_name.to_string(),
         params,
@@ -183,6 +284,11 @@ fn check_rust_syntax(rust_file: &str) -> Result<()> {
     }
     Ok(())
 }
+
+// fn check_rust_syntax(_rust_file: &str) -> Result<()> {
+//     // Skip syntax check - we'll validate during compilation
+//     Ok(())
+// }
 
 fn find_rust_function(rust_file: &str, func_name: &str) -> Result<FunctionSignature> {
     let content = std::fs::read_to_string(rust_file)?;

@@ -14,7 +14,7 @@ path = "src/main.rs"
 clap = { version = "4.4", features = ["derive"] }
 
 # Z3 SMT Solver bindings
-z3 = "0.12"
+z3 = { version = "0.12", features = ["static-link-z3"] }
 
 # JSON handling (for reports and path summaries)
 serde = { version = "1.0", features = ["derive"] }

@@ -51,7 +51,7 @@ pub fn normalize(config: &AnalysisConfig, ir_files: &IrFiles) -> Result<Normaliz
 /// Run LLVM optimization passes to normalize IR structure
 /// Uses new pass manager syntax (LLVM 13+)
 fn run_normalization_passes(input_bc: &str, output_bc: &str) -> Result<()> {
-    let output = Command::new("opt")
+    let output = Command::new("opt-15")
         // Use new pass manager
         .arg("-passes=mem2reg,simplifycfg,loop-simplify,lcssa,loop-rotate,indvars,dce,instcombine")
         
@@ -77,7 +77,7 @@ fn run_normalization_passes(input_bc: &str, output_bc: &str) -> Result<()> {
 
 /// Fallback: Use legacy pass manager syntax (LLVM < 13)
 fn run_normalization_passes_legacy(input_bc: &str, output_bc: &str) -> Result<()> {
-    let output = Command::new("opt")
+    let output = Command::new("opt-15")
         .arg("-mem2reg")
         .arg("-simplifycfg")
         .arg("-loop-simplify")
@@ -110,7 +110,7 @@ fn apply_text_normalizations(bc_path: &str) -> Result<()> {
     // Convert bitcode to text
     let ll_path = bc_path.replace(".bc", ".ll");
     
-    let dis_output = Command::new("llvm-dis")
+    let dis_output = Command::new("llvm-dis-15")
         .arg(bc_path)
         .arg("-o")
         .arg(&ll_path)
@@ -133,7 +133,7 @@ fn apply_text_normalizations(bc_path: &str) -> Result<()> {
     fs::write(&ll_path, content)?;
 
     // Convert back to bitcode
-    let as_output = Command::new("llvm-as")
+    let as_output = Command::new("llvm-as-15")
         .arg(&ll_path)
         .arg("-o")
         .arg(bc_path)
