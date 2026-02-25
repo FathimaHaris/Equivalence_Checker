@@ -31,6 +31,11 @@ colored = "2.0"
 log = "0.4"
 env_logger = "0.10"
 
+#Rust validation
+syn = { version = "2", features = ["full"] }
+quote = "1"
+proc-macro2 = "1"
+
 [dev-dependencies]
 # For integration tests
 tempfile = "3.8"

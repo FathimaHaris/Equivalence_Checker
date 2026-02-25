@@ -103,7 +103,7 @@ fn generate_rust_harness(
     
     // Main harness
     harness.push_str("#[no_mangle]\n");
-    harness.push_str("pub extern \"C\" fn main() -> i32 {\n");
+    harness.push_str("pub extern \"C\" fn klee_harness() -> i32 {\n");  
     
     // Declare variables as mutable
     for bound in bounds {
@@ -290,6 +290,7 @@ fn compile_rust_to_ir(rust_file: &str, output: &str) -> Result<()> {
         .arg("-C").arg("opt-level=0")
         .arg("-C").arg("inline-threshold=0")
         .arg("-C").arg("debuginfo=0")
+        .arg("-C").arg("overflow-checks=off") 
         .arg("--crate-type=lib")
         .arg("-o").arg(output)
         .arg(rust_file)

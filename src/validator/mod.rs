@@ -9,6 +9,8 @@ use anyhow::Result;
 use std::process::Command;
 use std::path::Path;
 use serde_json::Value;
+use quote::ToTokens;
+use syn::{Item, ItemFn};
 
 /// Main validation entry point
 pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
@@ -75,7 +77,11 @@ pub fn validate(config: &AnalysisConfig) -> Result<ValidationResult> {
     // Step 5: Find function in Rust file
     println!("  Looking for function '{}' in Rust...", config.function_name);
     let rust_sig = match find_rust_function(&config.rust_file, &config.function_name) {
-        Ok(sig) => Some(sig),
+        Ok(sig) => {
+            println!("  Rust return type: {}", sig.return_type);
+            println!("  Rust params: {:?}", sig.params);
+            Some(sig)
+        }
         Err(e) => {
             errors.push(format!("Rust function not found: {}", e));
             None
@@ -264,12 +270,8 @@ fn extract_signature_from_function_decl(node: &Value, func_name: &str) -> Result
 }
 
 // RUST VALIDATION HELPERS
-
-    
-    
 fn check_rust_syntax(rust_file: &str) -> Result<()> {
     // Compile-check only (no linking), stable-compatible
-    // We emit metadata to avoid producing a full binary.
     let output = Command::new("rustc")
         .arg("--crate-type=lib")
         .arg("--emit=metadata")
@@ -284,55 +286,59 @@ fn check_rust_syntax(rust_file: &str) -> Result<()> {
     }
     Ok(())
 }
-
-// fn check_rust_syntax(_rust_file: &str) -> Result<()> {
-//     // Skip syntax check - we'll validate during compilation
-//     Ok(())
-// }
-
+    
+    
 fn find_rust_function(rust_file: &str, func_name: &str) -> Result<FunctionSignature> {
     let content = std::fs::read_to_string(rust_file)?;
-    
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with("//") || line.is_empty() {
-            continue;
-        }
-        if (line.starts_with("fn") || line.starts_with("pub fn")) && line.contains(func_name) {
-            let sig = extract_rust_signature(line, func_name)?;
-            return Ok(sig);
+
+    // Parse full Rust source into AST
+    let file_ast = syn::parse_file(&content).map_err(|e| {
+        CheckerError::ValidationError(format!("Rust parse failed: {}", e))
+    })?;
+
+    for item in file_ast.items {
+        if let Item::Fn(item_fn) = item {
+            if item_fn.sig.ident == func_name {
+                return Ok(extract_rust_signature_from_itemfn(&item_fn));
+            }
         }
     }
-    
+
     Err(CheckerError::ValidationError(
         format!("Function '{}' not found", func_name)
     ).into())
 }
 
-fn extract_rust_signature(line: &str, func_name: &str) -> Result<FunctionSignature> {
-    let pstart = line.find('(').unwrap();
-    let pend = line.find(')').unwrap();
-    let params_str = &line[pstart + 1..pend].trim();
-    
-    let params = if params_str.is_empty() {
-        vec![]
-    } else {
-        params_str.split(',').map(|p| p.trim().to_string()).collect()
+fn extract_rust_signature_from_itemfn(item_fn: &ItemFn) -> FunctionSignature {
+    let name = item_fn.sig.ident.to_string();
+
+    // Params
+    let mut params: Vec<String> = Vec::new();
+    for input in &item_fn.sig.inputs {
+        match input {
+            syn::FnArg::Receiver(_) => {
+                // "self" method; your tool probably doesn't support methods yet
+                params.push("self".to_string());
+            }
+            syn::FnArg::Typed(pat_type) => {
+                let pat = pat_type.pat.to_token_stream().to_string();
+                let ty = pat_type.ty.to_token_stream().to_string();
+                params.push(format!("{}: {}", pat, ty));
+            }
+        }
+    }
+
+    // Return type
+    let return_type = match &item_fn.sig.output {
+        syn::ReturnType::Default => "()".to_string(),
+        syn::ReturnType::Type(_, ty) => ty.to_token_stream().to_string(),
     };
-    
-    let return_type = if line.contains("->") {
-        let arrow = line.find("->").unwrap();
-        line[arrow + 2..].trim().split_whitespace().next()
-            .unwrap_or("()").trim_end_matches('{').trim().to_string()
-    } else {
-        "()".to_string()
-    };
-    
-    Ok(FunctionSignature {
-        name: func_name.to_string(),
+
+    FunctionSignature {
+        name,
         params,
         return_type,
-    })
+    }
 }
 
 fn are_types_compatible(c_type: &str, rust_type: &str) -> bool {
