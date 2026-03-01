@@ -1,51 +1,83 @@
 // src/normalizer/mod.rs
 // ═══════════════════════════════════════════════════════
 // Module 3: IR Normalization
-// Standardizes LLVM IR to make C and Rust comparable
+// ═══════════════════════════════════════════════════════
+//
+// !! CRITICAL DESIGN NOTE !!
+// The bitcode files passed to KLEE must NOT be run through opt.
+// LLVM's mem2reg, dce, and instcombine passes can eliminate
+// klee_make_symbolic / klee_assume calls or merge branches,
+// causing KLEE to see only 1 path instead of 3.
+//
+// This module therefore:
+//   1. Makes a DIRECT copy of the compiler output for KLEE use.
+//   2. Produces a SEPARATE normalized copy (for the .ll display only).
 // ═══════════════════════════════════════════════════════
 
-use crate::types::{AnalysisConfig, CheckerError};
+use crate::types::AnalysisConfig;
 use crate::compiler::IrFiles;
 use anyhow::Result;
 use std::process::Command;
 use std::fs;
 
-/// Paths to normalized IR files
 #[derive(Debug, Clone)]
 pub struct NormalizedFiles {
+    /// These are passed to the instrumentor → KLEE.
+    /// They are DIRECT COPIES of the compiler output — no opt passes.
     pub c_normalized_path:    String,
     pub rust_normalized_path: String,
 }
 
-/// Main normalization entry point
 pub fn normalize(config: &AnalysisConfig, ir_files: &IrFiles) -> Result<NormalizedFiles> {
-    // Generate output paths
-    let c_norm = format!("/tmp/equivalence_checker/{}_c_normalized.bc", config.function_name);
-    let rust_norm = format!("/tmp/equivalence_checker/{}_rust_normalized.bc", config.function_name);
+    let c_norm = format!(
+        "/tmp/equivalence_checker/{}_c_normalized.bc",
+        config.function_name
+    );
+    let rust_norm = format!(
+        "/tmp/equivalence_checker/{}_rust_normalized.bc",
+        config.function_name
+    );
 
-    // Step 1: Run LLVM optimization passes on C IR
-    println!("  Normalizing C IR...");
-    run_normalization_passes(&ir_files.c_ir_path, &c_norm)?;
-    println!("    → Normalized: {}", c_norm);
+    // ── For KLEE: direct copy, no opt ─────────────────
+    println!("  Copying C IR (no opt — preserves KLEE symbolic semantics)...");
+    fs::copy(&ir_files.c_ir_path, &c_norm)?;
+    println!("    → {}", c_norm);
 
-    // Step 2: Run LLVM optimization passes on Rust IR
-    println!("  Normalizing Rust IR...");
-    run_normalization_passes(&ir_files.rust_ir_path, &rust_norm)?;
-    println!("    → Normalized: {}", rust_norm);
+    println!("  Copying Rust IR (no opt — preserves KLEE symbolic semantics)...");
+    fs::copy(&ir_files.rust_ir_path, &rust_norm)?;
+    println!("    → {}", rust_norm);
 
-
-
+    // ── For display: produce optimized .ll for human reading ──
     let ll_dir = "output/ir";
     fs::create_dir_all(ll_dir)?;
 
     let c_norm_ll = format!("{}/{}_c_normalized.ll", ll_dir, config.function_name);
     let r_norm_ll = format!("{}/{}_rust_normalized.ll", ll_dir, config.function_name);
 
-    let _ = Command::new("llvm-dis-15").arg(&c_norm).arg("-o").arg(&c_norm_ll).output()?;
-    let _ = Command::new("llvm-dis-15").arg(&rust_norm).arg("-o").arg(&r_norm_ll).output()?;
+    // We run opt on a throw-away copy so the KLEE bc is never touched
+    let c_opt_tmp  = format!("/tmp/equivalence_checker/{}_c_opt_display.bc", config.function_name);
+    let rs_opt_tmp = format!("/tmp/equivalence_checker/{}_rs_opt_display.bc", config.function_name);
 
+    if run_opt_passes(&ir_files.c_ir_path, &c_opt_tmp).is_ok() {
+        let _ = Command::new("llvm-dis-15")
+            .args([&c_opt_tmp, "-o", &c_norm_ll])
+            .output();
+    } else {
+        // Fall back to disassembling the raw bc
+        let _ = Command::new("llvm-dis-15")
+            .args([&ir_files.c_ir_path, "-o", &c_norm_ll])
+            .output();
+    }
 
-
+    if run_opt_passes(&ir_files.rust_ir_path, &rs_opt_tmp).is_ok() {
+        let _ = Command::new("llvm-dis-15")
+            .args([&rs_opt_tmp, "-o", &r_norm_ll])
+            .output();
+    } else {
+        let _ = Command::new("llvm-dis-15")
+            .args([&ir_files.rust_ir_path, "-o", &r_norm_ll])
+            .output();
+    }
 
     Ok(NormalizedFiles {
         c_normalized_path:    c_norm,
@@ -53,184 +85,25 @@ pub fn normalize(config: &AnalysisConfig, ir_files: &IrFiles) -> Result<Normaliz
     })
 }
 
-// ───────────────────────────────────────────────────────
-// LLVM PASS-BASED NORMALIZATION
-// ───────────────────────────────────────────────────────
-
-/// Run LLVM optimization passes to normalize IR structure
-/// Uses new pass manager syntax (LLVM 13+)
-fn run_normalization_passes(input_bc: &str, output_bc: &str) -> Result<()> {
-    let output = Command::new("opt-15")
-        // Use new pass manager
-        .arg("-passes=mem2reg,loop-simplify,lcssa,dce")
-        //loop-rotate,indvars,
-        
-        // Input file
-        .arg(input_bc)
-        
-        // Output file
-        .arg("-o")
-        .arg(output_bc)
-        
+/// Run standard normalization passes.
+/// Only used for generating human-readable .ll; never applied to KLEE bc.
+fn run_opt_passes(input: &str, output: &str) -> Result<()> {
+    // Try new pass manager first (LLVM 13+)
+    let o = Command::new("opt-15")
+        .args(["-passes=mem2reg,dce", input, "-o", output])
         .output()?;
 
-    if !output.status.success() {
-        let _stderr = String::from_utf8_lossy(&output.stderr);
-        
-        // If new syntax fails, try legacy syntax
-        println!("    (Trying legacy pass manager...)");
-        return run_normalization_passes_legacy(input_bc, output_bc);
+    if o.status.success() {
+        return Ok(());
     }
 
-    Ok(())
-}
-
-/// Fallback: Use legacy pass manager syntax (LLVM < 13)
-fn run_normalization_passes_legacy(input_bc: &str, output_bc: &str) -> Result<()> {
-    let output = Command::new("opt-15")
-        .arg("-mem2reg")
-        // .arg("-simplifycfg")
-        .arg("-loop-simplify")
-        .arg("-lcssa")
-        // .arg("-loop-rotate")
-        .arg("-dce")
-        // .arg("-instcombine")
-        .arg(input_bc)
-        .arg("-o")
-        .arg(output_bc)
+    // Fallback: legacy pass manager
+    let o = Command::new("opt-15")
+        .args(["-mem2reg", "-dce", input, "-o", output])
         .output()?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CheckerError::NormalizationError(
-            format!("LLVM opt failed:\n{}", stderr)
-        ).into());
+    if !o.status.success() {
+        return Err(anyhow::anyhow!("opt failed"));
     }
-
-    Ok(())
-}
-
-// // ───────────────────────────────────────────────────────
-// // TEXT-BASED NORMALIZATION (for consistent naming)
-// // ───────────────────────────────────────────────────────
-
-// /// Apply text-based normalizations by converting to .ll and back
-// /// This helps standardize variable and block naming
-// fn apply_text_normalizations(bc_path: &str) -> Result<()> {
-//     // Convert bitcode to text
-//     let ll_path = bc_path.replace(".bc", ".ll");
-    
-//     let dis_output = Command::new("llvm-dis-15")
-//         .arg(bc_path)
-//         .arg("-o")
-//         .arg(&ll_path)
-//         .output();
-
-//     // If llvm-dis fails (version mismatch), skip text normalization
-//     if dis_output.is_err() || !dis_output.as_ref().unwrap().status.success() {
-//         println!("    (Skipping text normalization due to LLVM version)");
-//         return Ok(());
-//     }
-
-//     // Read the text IR
-//     let mut content = fs::read_to_string(&ll_path)?;
-
-//     // Apply text transformations
-//     content = normalize_block_names(content);
-//     content = normalize_variable_names(content);
-
-//     // Write back
-//     fs::write(&ll_path, content)?;
-
-//     // Convert back to bitcode
-//     let as_output = Command::new("llvm-as-15")
-//         .arg(&ll_path)
-//         .arg("-o")
-//         .arg(bc_path)
-//         .output();
-
-//     // If llvm-as fails, just skip (keep original)
-//     if as_output.is_err() || !as_output.as_ref().unwrap().status.success() {
-//         println!("    (Could not reassemble - keeping original)");
-//         return Ok(());
-//     }
-
-//     // Clean up .ll file
-//     let _ = fs::remove_file(&ll_path);
-
-//     Ok(())
-// }
-
-// /// Normalize basic block names to consistent patterns
-// fn normalize_block_names(content: String) -> String {
-//     let mut result = content;
-
-//     // Common patterns to standardize
-//     let replacements = vec![
-//         // Entry blocks
-//         ("entry:", "block_entry:"),
-        
-//         // Loop headers
-//         ("for.cond:", "loop_header:"),
-//         ("while.cond:", "loop_header:"),
-        
-//         // Loop bodies
-//         ("for.body:", "loop_body:"),
-//         ("while.body:", "loop_body:"),
-        
-//         // Loop exits
-//         ("for.end:", "loop_exit:"),
-//         ("while.end:", "loop_exit:"),
-        
-//         // Conditional branches
-//         ("if.then:", "branch_true:"),
-//         ("if.else:", "branch_false:"),
-//         ("if.end:", "branch_merge:"),
-        
-//         // Return blocks
-//         ("return:", "block_return:"),
-//     ];
-
-//     for (old, new) in replacements {
-//         result = result.replace(old, new);
-//     }
-
-//     result
-// }
-
-// /// Normalize variable names (basic pattern matching)
-// fn normalize_variable_names(content: String) -> String {
-//     // This is a simplified version
-//     // A full implementation would use regex or proper IR parsing
-    
-//     // For now, just return as-is
-//     // In a production tool, you'd want to:
-//     // - Rename %0, %1, %2 to meaningful names
-//     // - Standardize temporary variable naming
-//     // - Align parameter names
-    
-//     content
-// }
-
-// ───────────────────────────────────────────────────────
-// HELPER: Display normalized IR (for debugging)
-// ───────────────────────────────────────────────────────
-
-#[allow(dead_code)]
-pub fn display_normalized_ir(bc_path: &str) -> Result<()> {
-    let ll_path = bc_path.replace(".bc", "_display.ll");
-    
-    let output = Command::new("llvm-dis-15")
-        .arg(bc_path)
-        .arg("-o")
-        .arg(&ll_path)
-        .output()?;
-
-    if output.status.success() {
-        let content = fs::read_to_string(&ll_path)?;
-        println!("\n{}\n", content);
-        let _ = fs::remove_file(&ll_path);
-    }
-
     Ok(())
 }

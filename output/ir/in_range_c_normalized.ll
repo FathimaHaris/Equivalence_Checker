@@ -1,4 +1,4 @@
-; ModuleID = '/tmp/equivalence_checker/in_range_c_normalized.bc'
+; ModuleID = '/tmp/equivalence_checker/in_range_c_opt_display.bc'
 source_filename = "/tmp/equivalence_checker/in_range_c_harness.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
@@ -31,24 +31,27 @@ define dso_local i32 @in_range(i32 noundef %0) #0 {
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @main() #0 {
   %1 = alloca i32, align 4
+  %2 = alloca i32, align 4
   call void @klee_make_symbolic(ptr noundef %1, i64 noundef 4, ptr noundef @.str)
-  %2 = load i32, ptr %1, align 4
-  %3 = icmp sge i32 %2, -5
-  br i1 %3, label %4, label %7
+  %3 = load i32, ptr %1, align 4
+  %4 = icmp sge i32 %3, 0
+  br i1 %4, label %5, label %8
 
-4:                                                ; preds = %0
-  %5 = load i32, ptr %1, align 4
-  %6 = icmp sle i32 %5, 15
-  br label %7
+5:                                                ; preds = %0
+  %6 = load i32, ptr %1, align 4
+  %7 = icmp sle i32 %6, 100
+  br label %8
 
-7:                                                ; preds = %4, %0
-  %8 = phi i1 [ false, %0 ], [ %6, %4 ]
-  %9 = zext i1 %8 to i32
-  %10 = sext i32 %9 to i64
-  call void @klee_assume(i64 noundef %10)
-  %11 = load i32, ptr %1, align 4
-  %12 = call i32 @in_range(i32 noundef %11)
-  ret i32 %12
+8:                                                ; preds = %5, %0
+  %9 = phi i1 [ false, %0 ], [ %7, %5 ]
+  %10 = zext i1 %9 to i32
+  %11 = sext i32 %10 to i64
+  call void @klee_assume(i64 noundef %11)
+  %12 = load i32, ptr %1, align 4
+  %13 = call i32 @in_range(i32 noundef %12)
+  store volatile i32 %13, ptr %2, align 4
+  %14 = load volatile i32, ptr %2, align 4
+  ret i32 %14
 }
 
 declare void @klee_make_symbolic(ptr noundef, i64 noundef, ptr noundef) #1

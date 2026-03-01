@@ -10,12 +10,30 @@ target triple = "x86_64-pc-linux-gnu"
 define dso_local i32 @compute(i32 noundef %0, i32 noundef %1) #0 {
   %3 = alloca i32, align 4
   %4 = alloca i32, align 4
-  store i32 %0, ptr %3, align 4
-  store i32 %1, ptr %4, align 4
-  %5 = load i32, ptr %3, align 4
+  %5 = alloca i32, align 4
+  store i32 %0, ptr %4, align 4
+  store i32 %1, ptr %5, align 4
   %6 = load i32, ptr %4, align 4
-  %7 = mul nsw i32 %5, %6
-  ret i32 %7
+  %7 = icmp sgt i32 %6, 10
+  br i1 %7, label %8, label %12
+
+8:                                                ; preds = %2
+  %9 = load i32, ptr %4, align 4
+  %10 = load i32, ptr %5, align 4
+  %11 = add nsw i32 %9, %10
+  store i32 %11, ptr %3, align 4
+  br label %16
+
+12:                                               ; preds = %2
+  %13 = load i32, ptr %4, align 4
+  %14 = load i32, ptr %5, align 4
+  %15 = mul nsw i32 %13, %14
+  store i32 %15, ptr %3, align 4
+  br label %16
+
+16:                                               ; preds = %12, %8
+  %17 = load i32, ptr %3, align 4
+  ret i32 %17
 }
 
 ; Function Attrs: noinline nounwind uwtable
@@ -28,12 +46,12 @@ define dso_local i32 @main() #0 {
   call void @klee_make_symbolic(ptr noundef %2, i64 noundef 4, ptr noundef @.str)
   call void @klee_make_symbolic(ptr noundef %3, i64 noundef 4, ptr noundef @.str.1)
   %5 = load i32, ptr %2, align 4
-  %6 = icmp sge i32 %5, -5
+  %6 = icmp sge i32 %5, 0
   br i1 %6, label %7, label %10
 
 7:                                                ; preds = %0
   %8 = load i32, ptr %2, align 4
-  %9 = icmp sle i32 %8, 15
+  %9 = icmp sle i32 %8, 100
   br label %10
 
 10:                                               ; preds = %7, %0
@@ -42,12 +60,12 @@ define dso_local i32 @main() #0 {
   %13 = sext i32 %12 to i64
   call void @klee_assume(i64 noundef %13)
   %14 = load i32, ptr %3, align 4
-  %15 = icmp sge i32 %14, -5
+  %15 = icmp sge i32 %14, 0
   br i1 %15, label %16, label %19
 
 16:                                               ; preds = %10
   %17 = load i32, ptr %3, align 4
-  %18 = icmp sle i32 %17, 15
+  %18 = icmp sle i32 %17, 100
   br label %19
 
 19:                                               ; preds = %16, %10
@@ -58,8 +76,8 @@ define dso_local i32 @main() #0 {
   %23 = load i32, ptr %2, align 4
   %24 = load i32, ptr %3, align 4
   %25 = call i32 @compute(i32 noundef %23, i32 noundef %24)
-  store i32 %25, ptr %4, align 4
-  %26 = load i32, ptr %4, align 4
+  store volatile i32 %25, ptr %4, align 4
+  %26 = load volatile i32, ptr %4, align 4
   ret i32 %26
 }
 

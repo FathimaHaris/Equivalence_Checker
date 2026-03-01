@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EQ·CHECK — Semantic Equivalence Verifier</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Martian+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0a0c0f;
+    --surface:  #111318;
+    --border:   #1e2229;
+    --border2:  #2a3040;
+    --text:     #c8d0dc;
+    --muted:    #4a5568;
+    --accent:   #00e5ff;
+    --accent2:  #7c3aed;
+    --green:    #00e096;
+    --red:      #ff4d6d;
+    --yellow:   #ffd166;
+    --mono:     'Martian Mono', monospace;
+    --sans:     'DM Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid background ── */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 40px 40px;
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Glow orbs ── */
+  .orb {
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    pointer-events: none;
+    z-index: 0;
+  }
+  .orb-1 { width: 500px; height: 500px; background: rgba(0,229,255,0.04); top: -100px; left: -100px; }
+  .orb-2 { width: 400px; height: 400px; background: rgba(124,58,237,0.05); bottom: 0; right: 0; }
+
+  /* ── Layout ── */
+  .wrapper {
+    position: relative; z-index: 1;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* ── Header ── */
+  header {
+    margin-bottom: 48px;
+    animation: fadeDown 0.6s ease both;
+  }
+  .logo-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+  }
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 700;
+    color: #000;
+    flex-shrink: 0;
+  }
+  .logo-text {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: #fff;
+  }
+  .logo-text span { color: var(--accent); }
+  .header-sub {
+    color: var(--muted);
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    margin-left: 56px;
+  }
+
+  /* ── Scan line decorative bar ── */
+  .scan-bar {
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
+    margin-bottom: 40px;
+    animation: scan 3s ease-in-out infinite alternate;
+  }
+  @keyframes scan { from { opacity: 0.4; } to { opacity: 1; } }
+
+  /* ── Card ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+    animation: fadeUp 0.5s ease both;
+  }
+  .card-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(255,255,255,0.015);
+  }
+  .card-header-num {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    background: rgba(0,229,255,0.08);
+    border: 1px solid rgba(0,229,255,0.2);
+    border-radius: 4px;
+    padding: 2px 7px;
+    letter-spacing: 0.05em;
+  }
+  .card-header-title {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .card-body { padding: 24px 20px; }
+
+  /* ── File upload area ── */
+  .file-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 600px) { .file-grid { grid-template-columns: 1fr; } }
+
+  .file-drop {
+    border: 1.5px dashed var(--border2);
+    border-radius: 10px;
+    padding: 28px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .file-drop:hover, .file-drop.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.03);
+  }
+  .file-drop.has-file {
+    border-color: var(--green);
+    border-style: solid;
+    background: rgba(0,224,150,0.03);
+  }
+  .file-drop input[type="file"] {
+    position: absolute; inset: 0;
+    opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .file-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 12px;
+  }
+  .badge-c    { background: rgba(0,229,255,0.1); color: var(--accent); border: 1px solid rgba(0,229,255,0.25); }
+  .badge-rust { background: rgba(255,77,109,0.1); color: #ff8c9e; border: 1px solid rgba(255,77,109,0.25); }
+
+  .file-drop-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+    display: block;
+    opacity: 0.4;
+  }
+  .file-drop-label {
+    font-size: 13px;
+    color: var(--muted);
+    display: block;
+    line-height: 1.5;
+  }
+  .file-drop-label strong { color: var(--text); font-weight: 500; }
+  .file-name-display {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--green);
+    word-break: break-all;
+    line-height: 1.4;
+  }
+  .file-name-display::before { content: '✓ '; }
+
+  /* ── Text inputs ── */
+  .field {
+    margin-bottom: 16px;
+  }
+  .field:last-child { margin-bottom: 0; }
+  .field-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 7px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .field-label .required {
+    color: var(--red);
+    font-size: 14px;
+    line-height: 1;
+  }
+  .field-hint {
+    font-family: var(--sans);
+    font-size: 11px;
+    color: var(--muted);
+    margin-left: auto;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  .input {
+    width: 100%;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #fff;
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .input:focus {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.03);
+  }
+  .input::placeholder { color: var(--muted); }
+
+  /* ── Advanced options toggle ── */
+  .advanced-toggle {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    padding: 0;
+    transition: color 0.15s;
+    margin-bottom: 16px;
+  }
+  .advanced-toggle:hover { color: var(--accent); }
+  .advanced-toggle .chevron {
+    transition: transform 0.2s;
+    display: inline-block;
+  }
+  .advanced-toggle.open .chevron { transform: rotate(90deg); }
+
+  .advanced-panel {
+    display: none;
+    animation: fadeUp 0.25s ease both;
+  }
+  .advanced-panel.open { display: block; }
+
+  .adv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 600px) { .adv-grid { grid-template-columns: 1fr; } }
+
+  /* ── Run button ── */
+  .run-btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 10px;
+    color: #000;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: opacity 0.2s, transform 0.1s;
+    margin-top: 8px;
+  }
+  .run-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .run-btn:active { transform: translateY(0); }
+  .run-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+  .run-btn .shimmer {
+    position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%);
+    transform: translateX(-100%);
+    animation: shimmer 2s ease infinite;
+  }
+  @keyframes shimmer { to { transform: translateX(200%); } }
+
+  /* ── Terminal / Output ── */
+  .terminal {
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .terminal-bar {
+    background: #0d1015;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-r { background: #ff5f56; }
+  .dot-y { background: #ffbd2e; }
+  .dot-g { background: #27c93f; }
+  .terminal-title {
+    margin-left: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+  }
+  .terminal-body {
+    padding: 16px;
+    max-height: 400px;
+    overflow-y: auto;
+    line-height: 1.7;
+  }
+  .terminal-body::-webkit-scrollbar { width: 6px; }
+  .terminal-body::-webkit-scrollbar-track { background: transparent; }
+  .terminal-body::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  .log-line { display: block; }
+  .log-step   { color: var(--accent); }
+  .log-ok     { color: var(--green); }
+  .log-err    { color: var(--red); }
+  .log-warn   { color: var(--yellow); }
+  .log-muted  { color: var(--muted); }
+  .log-path   { color: #7dd3fc; }
+  .log-num    { color: #f9a8d4; }
+
+  /* ── Cursor blink ── */
+  .cursor {
+    display: inline-block;
+    width: 8px; height: 14px;
+    background: var(--accent);
+    margin-left: 2px;
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Result card ── */
+  .result-card {
+    border-radius: 12px;
+    padding: 28px;
+    margin-top: 20px;
+    animation: fadeUp 0.4s ease both;
+    position: relative;
+    overflow: hidden;
+  }
+  .result-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    opacity: 0.06;
+    border-radius: 12px;
+  }
+  .result-equiv {
+    border: 1px solid rgba(0,224,150,0.3);
+    background: rgba(0,224,150,0.05);
+  }
+  .result-equiv::before { background: var(--green); }
+  .result-neq {
+    border: 1px solid rgba(255,77,109,0.3);
+    background: rgba(255,77,109,0.05);
+  }
+  .result-neq::before { background: var(--red); }
+
+  .result-headline {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .result-equiv .result-headline { color: var(--green); }
+  .result-neq .result-headline   { color: var(--red); }
+
+  .result-sub {
+    font-size: 13px;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .ce-box {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 16px 20px;
+  }
+  .ce-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .ce-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .ce-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    width: 90px;
+    flex-shrink: 0;
+  }
+  .ce-val {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .ce-input-val { color: var(--yellow); }
+  .ce-c-val    { color: var(--green); }
+  .ce-r-val    { color: var(--red); }
+  .ce-divider  { height: 1px; background: var(--border); margin: 10px 0; }
+
+  .stats-row {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+  }
+  .stat {
+    text-align: center;
+  }
+  .stat-val {
+    font-family: var(--mono);
+    font-size: 20px;
+    font-weight: 700;
+    color: #fff;
+    display: block;
+  }
+  .stat-key {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* ── Progress bar ── */
+  .progress-wrap {
+    background: var(--border);
+    border-radius: 4px;
+    height: 4px;
+    overflow: hidden;
+    margin: 12px 0;
+  }
+  .progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.3s ease;
+  }
+  .progress-bar.indeterminate {
+    width: 40%;
+    animation: slide 1.5s ease-in-out infinite;
+  }
+  @keyframes slide {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(300%); }
+  }
+
+  /* ── Animations ── */
+  @keyframes fadeUp   { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+  @keyframes fadeDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: none; } }
+
+  .card:nth-child(1) { animation-delay: 0.05s; }
+  .card:nth-child(2) { animation-delay: 0.10s; }
+  .card:nth-child(3) { animation-delay: 0.15s; }
+
+  /* ── Hidden ── */
+  .hidden { display: none !important; }
+
+  /* ── Tooltip ── */
+  [data-tip] { position: relative; cursor: help; }
+  [data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%; transform: translateX(-50%);
+    background: #1e2535;
+    border: 1px solid var(--border2);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    padding: 5px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+  }
+  [data-tip]:hover::after { opacity: 1; }
+
+  /* command preview */
+  .cmd-preview {
+    background: #060809;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    word-break: break-all;
+    line-height: 1.7;
+    margin-top: 12px;
+  }
+  .cmd-preview .cmd-exe  { color: var(--accent); }
+  .cmd-preview .cmd-flag { color: #7dd3fc; }
+  .cmd-preview .cmd-val  { color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<div class="orb orb-1"></div>
+<div class="orb orb-2"></div>
+
+<div class="wrapper">
+
+  <!-- ── Header ── -->
+  <header>
+    <div class="logo-row">
+      <div class="logo-icon">≡?</div>
+      <div class="logo-text">EQ<span>·</span>CHECK</div>
+    </div>
+    <div class="header-sub">LLVM-Based Cross-Language Semantic Equivalence Verifier · C ↔ Rust</div>
+  </header>
+
+  <div class="scan-bar"></div>
+
+  <!-- ── Card 1: Source Files ── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-num">01</span>
+      <span class="card-header-title">Source Files</span>
+    </div>
+    <div class="card-body">
+      <div class="file-grid">
+
+        <!-- C file -->
+        <div class="file-drop" id="drop-c" ondragover="handleDrag(event,'c')" ondragleave="clearDrag('c')" ondrop="handleFileDrop(event,'c')">
+          <input type="file" id="file-c" accept=".c" onchange="handleFileSelect(event,'c')">
+          <div class="file-badge badge-c">⬡ C SOURCE</div>
+          <span class="file-drop-icon">📄</span>
+          <span class="file-drop-label"><strong>Drop .c file here</strong><br>or click to browse</span>
+          <div class="file-name-display hidden" id="fname-c"></div>
+        </div>
+
+        <!-- Rust file -->
+        <div class="file-drop" id="drop-r" ondragover="handleDrag(event,'r')" ondragleave="clearDrag('r')" ondrop="handleFileDrop(event,'r')">
+          <input type="file" id="file-r" accept=".rs" onchange="handleFileSelect(event,'r')">
+          <div class="file-badge badge-rust">🦀 RUST SOURCE</div>
+          <span class="file-drop-icon">📄</span>
+          <span class="file-drop-label"><strong>Drop .rs file here</strong><br>or click to browse</span>
+          <div class="file-name-display hidden" id="fname-r"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Card 2: Function ── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-num">02</span>
+      <span class="card-header-title">Function to Verify</span>
+    </div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label" for="fn-name">
+          Function Name
+          <span class="required">*</span>
+          <span class="field-hint">Must exist in both files with compatible signatures</span>
+        </label>
+        <input class="input" id="fn-name" type="text" placeholder="e.g.  in_range  or  compute_hash" oninput="updatePreview()">
+      </div>
+
+      <!-- Advanced toggle -->
+      <button class="advanced-toggle" id="adv-btn" onclick="toggleAdvanced()">
+        <span class="chevron">›</span> ADVANCED OPTIONS
+        <span style="color:var(--border2);margin-left:4px;font-size:10px">(bounds · timeout · paths)</span>
+      </button>
+
+      <div class="advanced-panel" id="adv-panel">
+        <div class="field">
+          <label class="field-label" for="bounds" data-tip="Format: name:min:max — e.g. x:-10:10,y:0:100">
+            Input Bounds
+            <span class="field-hint">default: x:0:100</span>
+          </label>
+          <input class="input" id="bounds" type="text" placeholder="x:0:100" oninput="updatePreview()">
+        </div>
+        <div class="adv-grid">
+          <div class="field">
+            <label class="field-label" for="timeout" data-tip="Max seconds KLEE runs per program">
+              Timeout (seconds)
+              <span class="field-hint">default: 60</span>
+            </label>
+            <input class="input" id="timeout" type="number" placeholder="60" min="5" max="600" oninput="updatePreview()">
+          </div>
+          <div class="field">
+            <label class="field-label" for="max-paths" data-tip="Max paths KLEE explores">
+              Max Paths
+              <span class="field-hint">default: 100</span>
+            </label>
+            <input class="input" id="max-paths" type="number" placeholder="100" min="1" max="10000" oninput="updatePreview()">
+          </div>
+        </div>
+      </div>
+
+      <!-- Command preview -->
+      <div class="cmd-preview" id="cmd-preview">
+        <span class="log-muted"># Fill in the fields above to see the generated command</span>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ── Card 3: Run ── -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-header-num">03</span>
+      <span class="card-header-title">Run Verification</span>
+    </div>
+    <div class="card-body">
+
+      <button class="run-btn" id="run-btn" onclick="runCheck()" disabled>
+        <span class="shimmer"></span>
+        <span id="run-btn-text">▶ RUN EQUIVALENCE CHECK</span>
+      </button>
+
+      <!-- Progress -->
+      <div id="progress-area" class="hidden">
+        <div class="progress-wrap" style="margin-top:16px">
+          <div class="progress-bar indeterminate" id="prog-bar"></div>
+        </div>
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:6px" id="prog-label">Initialising…</div>
+      </div>
+
+      <!-- Terminal output -->
+      <div class="terminal hidden" id="terminal" style="margin-top:16px">
+        <div class="terminal-bar">
+          <div class="dot dot-r"></div>
+          <div class="dot dot-y"></div>
+          <div class="dot dot-g"></div>
+          <span class="terminal-title">equivalence_checker — stdout</span>
+        </div>
+        <div class="terminal-body" id="term-body"></div>
+      </div>
+
+      <!-- Result -->
+      <div id="result-area"></div>
+
+    </div>
+  </div>
+
+</div><!-- /wrapper -->
+
+<script>
+// ── State ─────────────────────────────────────────────
+const state = { cFile: null, rFile: null };
+
+// ── File handling ─────────────────────────────────────
+function handleFileSelect(e, side) {
+  const file = e.target.files[0];
+  if (file) setFile(side, file);
+}
+function handleDrag(e, side) {
+  e.preventDefault();
+  document.getElementById('drop-' + side).classList.add('drag-over');
+}
+function clearDrag(side) {
+  document.getElementById('drop-' + side).classList.remove('drag-over');
+}
+function handleFileDrop(e, side) {
+  e.preventDefault();
+  clearDrag(side);
+  const file = e.dataTransfer.files[0];
+  if (file) setFile(side, file);
+}
+
+function detectFunctionName(src, lang) {
+  // Strip comments first
+  src = src.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  if (lang === 'c') {
+    // Match: return_type fn_name(args) {
+    // Skips: #define, typedef, struct, if, for, while, etc.
+    const m = src.match(/^\s*(?:static\s+|inline\s+|extern\s+)*\w[\w\s\*]*?\s+(\w+)\s*\(([^)]*)\)\s*\{/m);
+    if (m) return { name: m[1], args: parseArgs(m[2], 'c') };
+  } else {
+    // Rust: pub fn / fn
+    const m = src.match(/(?:pub\s+)?fn\s+(\w+)\s*\(([^)]*)\)/m);
+    if (m) return { name: m[1], args: parseArgs(m[2], 'rust') };
+  }
+  return null;
+}
+
+function parseArgs(argStr, lang) {
+  // Returns array of { name, type } objects
+  argStr = argStr.trim();
+  if (!argStr) return [];
+
+  if (lang === 'c') {
+    // e.g. "int x, long y, float z"
+    return argStr.split(',').map(a => {
+      a = a.trim();
+      const parts = a.split(/\s+/);
+      const name = parts[parts.length - 1].replace(/^\*+/, '');
+      const type = parts.slice(0, -1).join(' ');
+      return { name, type };
+    }).filter(a => a.name && a.name !== '...' && a.name !== 'void');
+  } else {
+    // e.g. "x: i32, y: i64"
+    return argStr.split(',').map(a => {
+      a = a.trim();
+      if (a === '&self' || a === '&mut self' || a === 'self') return null;
+      const [name, type] = a.split(':').map(s => s.trim());
+      return name && type ? { name, type } : null;
+    }).filter(Boolean);
+  }
+}
+
+function setFile(side, file) {
+  const dropEl  = document.getElementById('drop-' + side);
+  const nameEl  = document.getElementById('fname-' + side);
+
+  if (side === 'c') state.cFile = file;
+  else              state.rFile = file;
+
+  dropEl.classList.add('has-file');
+  nameEl.classList.remove('hidden');
+  nameEl.textContent = file.name;
+
+  // Read file and try to detect function name + bounds
+  const reader = new FileReader();
+  reader.onload = e => {
+    const src  = e.target.result;
+    const lang = side === 'c' ? 'c' : 'rust';
+    const detected = detectFunctionName(src, lang);
+
+    if (detected) {
+      // Fill function name if empty
+      const fnInput = document.getElementById('fn-name');
+      if (!fnInput.value.trim()) {
+        fnInput.value = detected.name;
+      }
+
+      // Auto-fill bounds from argument names (integer args only)
+      const boundsInput = document.getElementById('bounds');
+      if (!boundsInput.value.trim() && detected.args.length > 0) {
+        const intTypes = /^(int|long|short|i8|i16|i32|i64|u8|u16|u32|u64|isize|usize)(\s+\w+)?$/;
+        const intArgs  = detected.args.filter(a => intTypes.test(a.type));
+        if (intArgs.length > 0) {
+          boundsInput.value = intArgs.map(a => `${a.name}:0:100`).join(',');
+        }
+      }
+    }
+
+    updateRunBtn();
+    updatePreview();
+  };
+  reader.readAsText(file);
+
+  updateRunBtn();
+  updatePreview();
+}
+
+// ── Form state ────────────────────────────────────────
+function updateRunBtn() {
+  const fn = document.getElementById('fn-name').value.trim();
+  document.getElementById('run-btn').disabled = !(state.cFile && state.rFile && fn);
+}
+
+document.getElementById('fn-name').addEventListener('input', updateRunBtn);
+
+// ── Advanced toggle ───────────────────────────────────
+function toggleAdvanced() {
+  const btn   = document.getElementById('adv-btn');
+  const panel = document.getElementById('adv-panel');
+  btn.classList.toggle('open');
+  panel.classList.toggle('open');
+}
+
+// ── Command preview ───────────────────────────────────
+function updatePreview() {
+  const fn      = document.getElementById('fn-name').value.trim();
+  const bounds  = document.getElementById('bounds').value.trim()    || 'x:0:100';
+  const timeout = document.getElementById('timeout').value.trim()   || '60';
+  const paths   = document.getElementById('max-paths').value.trim() || '100';
+  const cName   = state.cFile ? state.cFile.name : '<c_file.c>';
+  const rName   = state.rFile ? state.rFile.name : '<rust_file.rs>';
+
+  const preview = document.getElementById('cmd-preview');
+  if (!fn && !state.cFile && !state.rFile) {
+    preview.innerHTML = '<span class="log-muted"># Fill in the fields above to see the generated command</span>';
+    return;
+  }
+
+  preview.innerHTML =
+    `<span class="cmd-exe">cargo run</span> <span class="cmd-flag">--</span>\n` +
+    `  <span class="cmd-flag">--c-file</span>    <span class="cmd-val">${cName}</span>\n` +
+    `  <span class="cmd-flag">--rust-file</span> <span class="cmd-val">${rName}</span>\n` +
+    `  <span class="cmd-flag">--function</span>  <span class="cmd-val">${fn || '?'}</span>\n` +
+    `  <span class="cmd-flag">--bounds</span>    <span class="cmd-val">"${bounds}"</span>\n` +
+    `  <span class="cmd-flag">--timeout</span>   <span class="cmd-val">${timeout}</span>\n` +
+    `  <span class="cmd-flag">--max-paths</span> <span class="cmd-val">${paths}</span>`;
+}
+
+// ── Simulated run (replace with real fetch/websocket) ──
+async function runCheck() {
+  const fn_name  = document.getElementById('fn-name').value.trim();
+  const bounds   = document.getElementById('bounds').value.trim()    || 'x:0:100';
+  const timeout  = parseInt(document.getElementById('timeout').value)   || 60;
+  const paths    = parseInt(document.getElementById('max-paths').value) || 100;
+
+  // Disable run button
+  document.getElementById('run-btn').disabled = true;
+  document.getElementById('run-btn-text').textContent = '⏳ RUNNING…';
+
+  // Show progress + terminal, clear old results
+  document.getElementById('progress-area').classList.remove('hidden');
+  document.getElementById('terminal').classList.remove('hidden');
+  document.getElementById('result-area').innerHTML = '';
+  const termBody = document.getElementById('term-body');
+  termBody.innerHTML = '';
+
+  setProgress(10, 'Uploading files…');
+
+  // Build multipart form
+  const form = new FormData();
+  form.append('c_file',    state.cFile,  state.cFile.name);
+  form.append('rust_file', state.rFile,  state.rFile.name);
+  form.append('function',  fn_name);
+  form.append('bounds',    bounds);
+  form.append('timeout',   timeout);
+  form.append('max_paths', paths);
+
+  setProgress(20, 'Running pipeline…');
+
+  let response;
+  try {
+    response = await fetch('/run', { method: 'POST', body: form });
+  } catch (err) {
+    appendLine(termBody, 'err', '✗ Could not reach server: ' + err.message);
+    finishRun();
+    return;
+  }
+
+  setProgress(90, 'Parsing results…');
+
+  const text = await response.text();
+  let lastResult = null;
+
+  // Parse NDJSON — one JSON object per line
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let msg;
+    try { msg = JSON.parse(trimmed); } catch { continue; }
+
+    if (msg.type === 'log') {
+      appendLine(termBody, msg.level, msg.text);
+    } else if (msg.type === 'result') {
+      lastResult = msg;
+    } else if (msg.type === 'error') {
+      appendLine(termBody, 'err', '✗ ' + msg.text);
+    }
+  }
+
+  setProgress(100, 'Done');
+
+  // Show structured result card
+  if (lastResult) {
+    showResultFromMsg(lastResult, fn_name);
+  }
+
+  finishRun();
+}
+
+function finishRun() {
+  document.getElementById('progress-area').classList.add('hidden');
+  document.getElementById('run-btn').disabled = false;
+  document.getElementById('run-btn-text').textContent = '▶ RUN EQUIVALENCE CHECK';
+}
+
+function showResultFromMsg(msg, fn_name) {
+  if (msg.equivalent) {
+    showResult(true, fn_name, null, null, null,
+      null, null, null,
+      msg.paths_c, msg.paths_rust, msg.inputs_tested, msg.time_taken);
+  } else {
+    const ce = msg.counterexample;
+    const inputStr = ce ? ce.inputs.map(([k,v]) => `${k}=${v}`).join(', ') : '?';
+    showResult(false, fn_name,
+      inputStr,
+      ce ? ce.c_return : '?',
+      ce ? ce.r_return : '?',
+      null, null, null,
+      msg.paths_c, msg.paths_rust, msg.inputs_tested, msg.time_taken);
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function appendLine(container, type, text) {
+  const span = document.createElement('span');
+  span.className = 'log-line log-' + type;
+  span.textContent = text;
+  container.appendChild(span);
+  container.appendChild(document.createElement('br'));
+  container.scrollTop = container.scrollHeight;
+}
+
+function setProgress(pct, label) {
+  const bar = document.getElementById('prog-bar');
+  bar.classList.remove('indeterminate');
+  bar.style.width = pct + '%';
+  document.getElementById('prog-label').textContent = label;
+}
+
+function parseRange(bounds) {
+  // Count total combinations
+  try {
+    let total = 1;
+    for (const part of bounds.split(',')) {
+      const [, min, max] = part.split(':');
+      total *= (parseInt(max) - parseInt(min) + 1);
+    }
+    return Math.min(total, 500);
+  } catch { return 21; }
+}
+
+function showResult(equivalent, fn_name, ceInput, cRet, rRet,
+                    _b, _t, _p, pathsC, pathsRust, inputsTested, timeTaken) {
+  const area = document.getElementById('result-area');
+  const time = timeTaken != null ? timeTaken.toFixed(2) + 's' : '—';
+  if (equivalent) {
+    area.innerHTML = `
+      <div class="result-card result-equiv">
+        <div class="result-headline">✓ SEMANTICALLY EQUIVALENT</div>
+        <div class="result-sub">All execution paths produce identical outputs for every input within the specified bounds.</div>
+        <div class="stats-row">
+          <div class="stat"><span class="stat-val">${pathsC ?? '—'}</span><span class="stat-key">C Paths</span></div>
+          <div class="stat"><span class="stat-val">${pathsRust ?? '—'}</span><span class="stat-key">Rust Paths</span></div>
+          <div class="stat"><span class="stat-val">${inputsTested ?? '—'}</span><span class="stat-key">Inputs Tested</span></div>
+          <div class="stat"><span class="stat-val">${time}</span><span class="stat-key">Time</span></div>
+        </div>
+      </div>`;
+  } else {
+    area.innerHTML = `
+      <div class="result-card result-neq">
+        <div class="result-headline">✗ NOT EQUIVALENT</div>
+        <div class="result-sub">A counterexample was found where the two programs return different values.</div>
+        <div class="ce-box">
+          <div class="ce-title">Counterexample</div>
+          <div class="ce-row"><span class="ce-label">Input</span><span class="ce-val ce-input-val">${fn_name}(${ceInput})</span></div>
+          <div class="ce-divider"></div>
+          <div class="ce-row"><span class="ce-label">C returns</span><span class="ce-val ce-c-val">${cRet}</span></div>
+          <div class="ce-row"><span class="ce-label">Rust returns</span><span class="ce-val ce-r-val">${rRet}</span></div>
+          <div class="ce-divider"></div>
+          <div class="ce-row"><span class="ce-label" style="font-size:11px">Time</span><span class="ce-val" style="font-size:12px;color:var(--muted)">${time}</span></div>
+        </div>
+      </div>`;
+  }
+}
+</script>
+</body>
+</html>

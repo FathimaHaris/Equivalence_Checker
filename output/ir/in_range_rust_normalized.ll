@@ -1,4 +1,4 @@
-; ModuleID = '/tmp/equivalence_checker/in_range_rust_normalized.bc'
+; ModuleID = '/tmp/equivalence_checker/in_range_rs_opt_display.bc'
 source_filename = "in_range_rust_harness.a0019b2a-cgu.0"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
@@ -36,7 +36,7 @@ start:
   store i32 0, ptr %x, align 4
   call void @klee_make_symbolic(ptr %x, i64 4, ptr @alloc_c9c957c0c8511304e1f0e63463442336)
   %_14 = load i32, ptr %x, align 4, !noundef !2
-  %_13 = icmp sge i32 %_14, -5
+  %_13 = icmp sge i32 %_14, 0
   br i1 %_13, label %bb5, label %bb4
 
 bb4:                                              ; preds = %start
@@ -44,7 +44,7 @@ bb4:                                              ; preds = %start
 
 bb5:                                              ; preds = %start
   %_16 = load i32, ptr %x, align 4, !noundef !2
-  %_15 = icmp sle i32 %_16, 15
+  %_15 = icmp sle i32 %_16, 100
   %0 = zext i1 %_15 to i8
   br label %bb6
 

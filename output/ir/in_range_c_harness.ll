@@ -45,12 +45,12 @@ define dso_local i32 @main() #0 {
   store i32 0, ptr %1, align 4
   call void @klee_make_symbolic(ptr noundef %2, i64 noundef 4, ptr noundef @.str)
   %4 = load i32, ptr %2, align 4
-  %5 = icmp sge i32 %4, -5
+  %5 = icmp sge i32 %4, 0
   br i1 %5, label %6, label %9
 
 6:                                                ; preds = %0
   %7 = load i32, ptr %2, align 4
-  %8 = icmp sle i32 %7, 15
+  %8 = icmp sle i32 %7, 100
   br label %9
 
 9:                                                ; preds = %6, %0
@@ -60,8 +60,8 @@ define dso_local i32 @main() #0 {
   call void @klee_assume(i64 noundef %12)
   %13 = load i32, ptr %2, align 4
   %14 = call i32 @in_range(i32 noundef %13)
-  store i32 %14, ptr %3, align 4
-  %15 = load i32, ptr %3, align 4
+  store volatile i32 %14, ptr %3, align 4
+  %15 = load volatile i32, ptr %3, align 4
   ret i32 %15
 }
 
