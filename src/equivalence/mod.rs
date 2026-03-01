@@ -11,49 +11,275 @@ use crate::types::{
 use crate::symbolic::SymbolicSummaries;
 use anyhow::Result;
 use std::time::Instant;
+use std::process::Command;
 use z3::{Config, Context, Solver, ast::{Ast, Int}};
+use crate::types::{ComparisonStats, TestCaseResult};
+use rand::Rng;
 
-pub fn check(config: &AnalysisConfig, summaries: &SymbolicSummaries) -> Result<EquivalenceResult> {
+// pub fn check(config: &AnalysisConfig, summaries: &SymbolicSummaries,c_runner_bin: &str,
+//     rust_runner_bin: &str,) -> Result<EquivalenceResult>
+//      {
+//     let start_time = Instant::now();
+//     let mut saw_unknown = false;
+
+//     println!("  Analyzing path summaries...");
+//     println!("    C paths:    {}", summaries.c_summaries.len());
+//     println!("    Rust paths: {}", summaries.rust_summaries.len());
+
+//     // Step 0.6.1: Path Merging
+//     let merged_pairs = merge_paths(&summaries.c_summaries, &summaries.rust_summaries);
+//     println!("  Merged {} path pairs for comparison", merged_pairs.len());
+
+//     // Step 0.6.2 & 0.6.3: Equivalence Query Construction + SMT Solving
+//     for (i, (c_path, rust_path)) in merged_pairs.iter().enumerate() {
+//         println!("  Checking path pair {}...", i + 1);
+        
+//         match check_path_equivalence(c_path, rust_path, &config.bounds)? {
+//             PathEquivalence::Equivalent => {
+//                 println!("    ✓ Paths are equivalent");
+//             }
+//             PathEquivalence::NotEquivalent(counterexample) => {
+//                 println!("    ✗ Found counterexample!");
+//                 return Ok(EquivalenceResult {
+//                     verdict: Verdict::NotEquivalent,
+//                     paths_compared: i as u32 + 1,
+//                     counterexample: Some(counterexample),
+//                     time_taken: start_time.elapsed().as_secs_f64(),
+//                     test_cases: todo!(),
+//                     stats: todo!(),
+//                 });
+//             }
+
+//             PathEquivalence::Unknown => {
+//                 println!("    ? Can't compare this pair yet (return_expr UNKNOWN)");
+//                 saw_unknown = true;
+//                 // Don't return yet; just remember we saw unknown
+//             }
+//         }
+//     }
+
+//     // All paths checked - programs are equivalent!
+//     println!("  ✓ All {} path pairs are equivalent", merged_pairs.len());
+    
+    
+//     if saw_unknown {
+//         return Ok(EquivalenceResult {
+//             verdict: Verdict::Unknown,
+//             paths_compared: merged_pairs.len() as u32,
+//             counterexample: None,
+//             time_taken: start_time.elapsed().as_secs_f64(),
+//             test_cases: todo!(),
+//             stats: todo!(),
+//         });
+//     }
+
+
+
+
+
+//     Ok(EquivalenceResult {
+//         verdict: Verdict::Equivalent,
+//         paths_compared: merged_pairs.len() as u32,
+//         counterexample: None,
+//         time_taken: start_time.elapsed().as_secs_f64(),
+//         test_cases: todo!(),
+//         stats: todo!(),
+//     })
+// }
+
+pub fn check(
+    config: &AnalysisConfig,
+    summaries: &SymbolicSummaries,
+    c_runner_bin: &str,
+    rust_runner_bin: &str,
+) -> Result<EquivalenceResult> {
+
     let start_time = Instant::now();
 
-    println!("  Analyzing path summaries...");
-    println!("    C paths:    {}", summaries.c_summaries.len());
-    println!("    Rust paths: {}", summaries.rust_summaries.len());
+    println!("  Collecting concrete tests from KLEE...");
 
-    // Step 0.6.1: Path Merging
-    let merged_pairs = merge_paths(&summaries.c_summaries, &summaries.rust_summaries);
-    println!("  Merged {} path pairs for comparison", merged_pairs.len());
-
-    // Step 0.6.2 & 0.6.3: Equivalence Query Construction + SMT Solving
-    for (i, (c_path, rust_path)) in merged_pairs.iter().enumerate() {
-        println!("  Checking path pair {}...", i + 1);
-        
-        match check_path_equivalence(c_path, rust_path, &config.bounds)? {
-            PathEquivalence::Equivalent => {
-                println!("    ✓ Paths are equivalent");
-            }
-            PathEquivalence::NotEquivalent(counterexample) => {
-                println!("    ✗ Found counterexample!");
-                return Ok(EquivalenceResult {
-                    verdict: Verdict::NotEquivalent,
-                    paths_compared: i as u32 + 1,
-                    counterexample: Some(counterexample),
-                    time_taken: start_time.elapsed().as_secs_f64(),
-                });
+    // 1) collect witness inputs
+    let mut tests: Vec<Vec<(String, i64)>> = Vec::new();
+    for p in &summaries.c_summaries {
+        if !p.witness.is_empty() {
+            tests.push(p.witness.clone());
+        }
+    }
+    if tests.is_empty() {
+        for p in &summaries.rust_summaries {
+            if !p.witness.is_empty() {
+                tests.push(p.witness.clone());
             }
         }
     }
 
-    // All paths checked - programs are equivalent!
-    println!("  ✓ All {} path pairs are equivalent", merged_pairs.len());
+
+
+     // Also generate random tests to increase coverage
+    println!("  Generating random test cases...");
+    let random_tests = generate_random_tests(config, 10)?; // Generate 10 random tests
+    tests.extend(random_tests);
+    
+    // Remove duplicates
+    tests.sort();
+    tests.dedup();
+
+
+    println!("  Total test inputs: {}", tests.len());
+
+    // 2) run both programs concretely
+    let mut compared = 0u32;
+     let mut test_results = Vec::new();
+
+    for input in tests {
+        compared += 1;
+
+        let c_ret = run_runner(c_runner_bin, &config.bounds, &input)?;
+        let r_ret = run_runner(rust_runner_bin, &config.bounds, &input)?;
+
+        // Record test case result
+        test_results.push(TestCaseResult {
+            inputs: input.clone(),
+            c_behavior: BehaviorSnapshot {
+                return_value: c_ret.to_string(),
+                stdout: vec![],
+                stderr: vec![],
+                globals: vec![],
+            },
+            rust_behavior: BehaviorSnapshot {
+                return_value: r_ret.to_string(),
+                stdout: vec![],
+                stderr: vec![],
+                globals: vec![],
+            },
+            differences: if c_ret != r_ret {
+                vec![Difference {
+                    kind: DifferenceKind::ReturnValue,
+                    c_value: c_ret.to_string(),
+                    rust_value: r_ret.to_string(),
+                }]
+            } else {
+                vec![]
+            },
+        });
+
+
+
+
+        if c_ret != r_ret {
+            return Ok(EquivalenceResult {
+                verdict: Verdict::NotEquivalent,
+                paths_compared: compared,
+                counterexample: Some(Counterexample {
+                    inputs: input.clone(),
+                    c_behavior: BehaviorSnapshot {
+                        return_value: c_ret.to_string(),
+                        stdout: vec![],
+                        stderr: vec![],
+                        globals: vec![],
+                    },
+                    rust_behavior: BehaviorSnapshot {
+                        return_value: r_ret.to_string(),
+                        stdout: vec![],
+                        stderr: vec![],
+                        globals: vec![],
+                    },
+                    differences: vec![Difference {
+                        kind: DifferenceKind::ReturnValue,
+                        c_value: c_ret.to_string(),
+                        rust_value: r_ret.to_string(),
+                    }],
+                }),
+                time_taken: start_time.elapsed().as_secs_f64(),
+                 test_cases: test_results,
+                stats: ComparisonStats {
+                    total_tests: compared,
+                    equivalent_tests: compared - 1,
+                    non_equivalent_tests: 1,
+                },
+            });
+        }
+    }
+
+     // If we get here and no return expressions were extracted, still need to run Z3
+    if !summaries.c_summaries.is_empty() && !summaries.rust_summaries.is_empty() {
+        if summaries.c_summaries[0].return_expr == "UNKNOWN" {
+            println!("  Warning: Return expressions unknown. Consider extracting from KLEE.");
+        }
+    }
+
+    
 
     Ok(EquivalenceResult {
         verdict: Verdict::Equivalent,
-        paths_compared: merged_pairs.len() as u32,
+        paths_compared: compared,
         counterexample: None,
         time_taken: start_time.elapsed().as_secs_f64(),
+         test_cases: test_results,
+        stats: ComparisonStats {
+            total_tests: compared,
+            equivalent_tests: compared,
+            non_equivalent_tests: 0,
+        },
     })
 }
+
+
+// Add random test generation
+fn generate_random_tests(config: &AnalysisConfig, count: usize) -> Result<Vec<Vec<(String, i64)>>> {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let mut tests = Vec::new();
+    
+    for _ in 0..count {
+        let mut test = Vec::new();
+        for bound in &config.bounds {
+            let value = rng.gen_range(bound.min..=bound.max);
+            test.push((bound.name.clone(), value));
+        }
+        tests.push(test);
+    }
+    
+    Ok(tests)
+}
+
+fn run_runner(
+    bin: &str,
+    bounds: &[crate::types::InputBound],
+    inputs: &[(String, i64)],
+) -> Result<i64> {
+    let mut args = Vec::new();
+
+    for b in bounds {
+        let v = inputs
+            .iter()
+            .find(|(n, _)| n == &b.name)
+            .ok_or_else(|| crate::types::CheckerError::EquivalenceError(format!("missing input {}", b.name)))?
+            .1;
+        args.push(v.to_string());
+    }
+
+    let out = Command::new(bin).args(args).output()?;
+
+    if !out.status.success() {
+        return Err(crate::types::CheckerError::EquivalenceError(
+            format!("runner failed: {}", String::from_utf8_lossy(&out.stderr))
+        ).into());
+    }
+
+    let s = String::from_utf8_lossy(&out.stdout);
+    let v: i64 = s.trim().parse().map_err(|_| {
+        crate::types::CheckerError::EquivalenceError(format!("bad runner output: {}", s))
+    })?;
+
+    Ok(v)
+}
+
+
+
+
+
+
 
 // ───────────────────────────────────────────────────────
 // Step 0.6.1: Path Merging
@@ -103,6 +329,7 @@ fn paths_overlap(c_path: &PathSummary, rust_path: &PathSummary) -> bool {
 enum PathEquivalence {
     Equivalent,
     NotEquivalent(Counterexample),
+    Unknown,
 }
 
 fn check_path_equivalence(
@@ -110,6 +337,15 @@ fn check_path_equivalence(
     rust_path: &PathSummary,
     bounds: &[crate::types::InputBound],
 ) -> Result<PathEquivalence> {
+    
+    
+    if c_path.return_expr == "UNKNOWN" || rust_path.return_expr == "UNKNOWN"
+     {
+             return Ok(PathEquivalence::Unknown);
+    }
+
+
+
     // Create Z3 context
     let cfg = Config::new();
     let ctx = Context::new(&cfg);

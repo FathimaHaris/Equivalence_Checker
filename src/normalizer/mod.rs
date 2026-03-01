@@ -33,10 +33,19 @@ pub fn normalize(config: &AnalysisConfig, ir_files: &IrFiles) -> Result<Normaliz
     run_normalization_passes(&ir_files.rust_ir_path, &rust_norm)?;
     println!("    → Normalized: {}", rust_norm);
 
-    // Step 3: Additional text-based normalization (optional but helpful)
-    println!("  Applying additional normalizations...");
-    apply_text_normalizations(&c_norm)?;
-    apply_text_normalizations(&rust_norm)?;
+
+
+    let ll_dir = "output/ir";
+    fs::create_dir_all(ll_dir)?;
+
+    let c_norm_ll = format!("{}/{}_c_normalized.ll", ll_dir, config.function_name);
+    let r_norm_ll = format!("{}/{}_rust_normalized.ll", ll_dir, config.function_name);
+
+    let _ = Command::new("llvm-dis-15").arg(&c_norm).arg("-o").arg(&c_norm_ll).output()?;
+    let _ = Command::new("llvm-dis-15").arg(&rust_norm).arg("-o").arg(&r_norm_ll).output()?;
+
+
+
 
     Ok(NormalizedFiles {
         c_normalized_path:    c_norm,
@@ -53,7 +62,8 @@ pub fn normalize(config: &AnalysisConfig, ir_files: &IrFiles) -> Result<Normaliz
 fn run_normalization_passes(input_bc: &str, output_bc: &str) -> Result<()> {
     let output = Command::new("opt-15")
         // Use new pass manager
-        .arg("-passes=mem2reg,simplifycfg,loop-simplify,lcssa,loop-rotate,indvars,dce,instcombine")
+        .arg("-passes=mem2reg,loop-simplify,lcssa,dce")
+        //loop-rotate,indvars,
         
         // Input file
         .arg(input_bc)
@@ -65,7 +75,7 @@ fn run_normalization_passes(input_bc: &str, output_bc: &str) -> Result<()> {
         .output()?;
 
     if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
+        let _stderr = String::from_utf8_lossy(&output.stderr);
         
         // If new syntax fails, try legacy syntax
         println!("    (Trying legacy pass manager...)");
@@ -79,12 +89,12 @@ fn run_normalization_passes(input_bc: &str, output_bc: &str) -> Result<()> {
 fn run_normalization_passes_legacy(input_bc: &str, output_bc: &str) -> Result<()> {
     let output = Command::new("opt-15")
         .arg("-mem2reg")
-        .arg("-simplifycfg")
+        // .arg("-simplifycfg")
         .arg("-loop-simplify")
         .arg("-lcssa")
-        .arg("-loop-rotate")
+        // .arg("-loop-rotate")
         .arg("-dce")
-        .arg("-instcombine")
+        // .arg("-instcombine")
         .arg(input_bc)
         .arg("-o")
         .arg(output_bc)
@@ -100,107 +110,107 @@ fn run_normalization_passes_legacy(input_bc: &str, output_bc: &str) -> Result<()
     Ok(())
 }
 
-// ───────────────────────────────────────────────────────
-// TEXT-BASED NORMALIZATION (for consistent naming)
-// ───────────────────────────────────────────────────────
+// // ───────────────────────────────────────────────────────
+// // TEXT-BASED NORMALIZATION (for consistent naming)
+// // ───────────────────────────────────────────────────────
 
-/// Apply text-based normalizations by converting to .ll and back
-/// This helps standardize variable and block naming
-fn apply_text_normalizations(bc_path: &str) -> Result<()> {
-    // Convert bitcode to text
-    let ll_path = bc_path.replace(".bc", ".ll");
+// /// Apply text-based normalizations by converting to .ll and back
+// /// This helps standardize variable and block naming
+// fn apply_text_normalizations(bc_path: &str) -> Result<()> {
+//     // Convert bitcode to text
+//     let ll_path = bc_path.replace(".bc", ".ll");
     
-    let dis_output = Command::new("llvm-dis-15")
-        .arg(bc_path)
-        .arg("-o")
-        .arg(&ll_path)
-        .output();
+//     let dis_output = Command::new("llvm-dis-15")
+//         .arg(bc_path)
+//         .arg("-o")
+//         .arg(&ll_path)
+//         .output();
 
-    // If llvm-dis fails (version mismatch), skip text normalization
-    if dis_output.is_err() || !dis_output.as_ref().unwrap().status.success() {
-        println!("    (Skipping text normalization due to LLVM version)");
-        return Ok(());
-    }
+//     // If llvm-dis fails (version mismatch), skip text normalization
+//     if dis_output.is_err() || !dis_output.as_ref().unwrap().status.success() {
+//         println!("    (Skipping text normalization due to LLVM version)");
+//         return Ok(());
+//     }
 
-    // Read the text IR
-    let mut content = fs::read_to_string(&ll_path)?;
+//     // Read the text IR
+//     let mut content = fs::read_to_string(&ll_path)?;
 
-    // Apply text transformations
-    content = normalize_block_names(content);
-    content = normalize_variable_names(content);
+//     // Apply text transformations
+//     content = normalize_block_names(content);
+//     content = normalize_variable_names(content);
 
-    // Write back
-    fs::write(&ll_path, content)?;
+//     // Write back
+//     fs::write(&ll_path, content)?;
 
-    // Convert back to bitcode
-    let as_output = Command::new("llvm-as-15")
-        .arg(&ll_path)
-        .arg("-o")
-        .arg(bc_path)
-        .output();
+//     // Convert back to bitcode
+//     let as_output = Command::new("llvm-as-15")
+//         .arg(&ll_path)
+//         .arg("-o")
+//         .arg(bc_path)
+//         .output();
 
-    // If llvm-as fails, just skip (keep original)
-    if as_output.is_err() || !as_output.as_ref().unwrap().status.success() {
-        println!("    (Could not reassemble - keeping original)");
-        return Ok(());
-    }
+//     // If llvm-as fails, just skip (keep original)
+//     if as_output.is_err() || !as_output.as_ref().unwrap().status.success() {
+//         println!("    (Could not reassemble - keeping original)");
+//         return Ok(());
+//     }
 
-    // Clean up .ll file
-    let _ = fs::remove_file(&ll_path);
+//     // Clean up .ll file
+//     let _ = fs::remove_file(&ll_path);
 
-    Ok(())
-}
+//     Ok(())
+// }
 
-/// Normalize basic block names to consistent patterns
-fn normalize_block_names(content: String) -> String {
-    let mut result = content;
+// /// Normalize basic block names to consistent patterns
+// fn normalize_block_names(content: String) -> String {
+//     let mut result = content;
 
-    // Common patterns to standardize
-    let replacements = vec![
-        // Entry blocks
-        ("entry:", "block_entry:"),
+//     // Common patterns to standardize
+//     let replacements = vec![
+//         // Entry blocks
+//         ("entry:", "block_entry:"),
         
-        // Loop headers
-        ("for.cond:", "loop_header:"),
-        ("while.cond:", "loop_header:"),
+//         // Loop headers
+//         ("for.cond:", "loop_header:"),
+//         ("while.cond:", "loop_header:"),
         
-        // Loop bodies
-        ("for.body:", "loop_body:"),
-        ("while.body:", "loop_body:"),
+//         // Loop bodies
+//         ("for.body:", "loop_body:"),
+//         ("while.body:", "loop_body:"),
         
-        // Loop exits
-        ("for.end:", "loop_exit:"),
-        ("while.end:", "loop_exit:"),
+//         // Loop exits
+//         ("for.end:", "loop_exit:"),
+//         ("while.end:", "loop_exit:"),
         
-        // Conditional branches
-        ("if.then:", "branch_true:"),
-        ("if.else:", "branch_false:"),
-        ("if.end:", "branch_merge:"),
+//         // Conditional branches
+//         ("if.then:", "branch_true:"),
+//         ("if.else:", "branch_false:"),
+//         ("if.end:", "branch_merge:"),
         
-        // Return blocks
-        ("return:", "block_return:"),
-    ];
+//         // Return blocks
+//         ("return:", "block_return:"),
+//     ];
 
-    for (old, new) in replacements {
-        result = result.replace(old, new);
-    }
+//     for (old, new) in replacements {
+//         result = result.replace(old, new);
+//     }
 
-    result
-}
+//     result
+// }
 
-/// Normalize variable names (basic pattern matching)
-fn normalize_variable_names(content: String) -> String {
-    // This is a simplified version
-    // A full implementation would use regex or proper IR parsing
+// /// Normalize variable names (basic pattern matching)
+// fn normalize_variable_names(content: String) -> String {
+//     // This is a simplified version
+//     // A full implementation would use regex or proper IR parsing
     
-    // For now, just return as-is
-    // In a production tool, you'd want to:
-    // - Rename %0, %1, %2 to meaningful names
-    // - Standardize temporary variable naming
-    // - Align parameter names
+//     // For now, just return as-is
+//     // In a production tool, you'd want to:
+//     // - Rename %0, %1, %2 to meaningful names
+//     // - Standardize temporary variable naming
+//     // - Align parameter names
     
-    content
-}
+//     content
+// }
 
 // ───────────────────────────────────────────────────────
 // HELPER: Display normalized IR (for debugging)
@@ -210,7 +220,7 @@ fn normalize_variable_names(content: String) -> String {
 pub fn display_normalized_ir(bc_path: &str) -> Result<()> {
     let ll_path = bc_path.replace(".bc", "_display.ll");
     
-    let output = Command::new("llvm-dis")
+    let output = Command::new("llvm-dis-15")
         .arg(bc_path)
         .arg("-o")
         .arg(&ll_path)

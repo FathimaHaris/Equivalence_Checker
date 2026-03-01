@@ -36,6 +36,10 @@ syn = { version = "2", features = ["full"] }
 quote = "1"
 proc-macro2 = "1"
 
+
+
+rand = "0.8"
+
 [dev-dependencies]
 # For integration tests
 tempfile = "3.8"

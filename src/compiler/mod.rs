@@ -15,6 +15,8 @@ use std::fs;
 pub struct IrFiles {
     pub c_ir_path:    String,
     pub rust_ir_path: String,
+    pub c_runner_bin: String,
+    pub rust_runner_bin: String,
 }
 
 
@@ -148,6 +150,101 @@ b\"{}\\0\".as_ptr()\n        \
     Ok(harness_path)
 }
 
+
+fn generate_c_runner(
+    c_file: &str,
+    function_name: &str,
+    bounds: &[crate::types::InputBound],
+) -> Result<String> {
+    let content = fs::read_to_string(c_file)?;
+
+    let mut s = String::new();
+    s.push_str("#include <stdio.h>\n#include <stdlib.h>\n\n");
+    s.push_str(&content);
+    s.push_str("\n\nint main(int argc, char** argv) {\n");
+    s.push_str(&format!("    if (argc != {}) return 2;\n", bounds.len() + 1));
+
+    for (i, b) in bounds.iter().enumerate() {
+        s.push_str(&format!("    int {} = atoi(argv[{}]);\n", b.name, i + 1));
+    }
+
+    let args: Vec<String> = bounds.iter().map(|b| b.name.clone()).collect();
+    s.push_str(&format!("    int r = {}({});\n", function_name, args.join(", ")));
+    s.push_str("    printf(\"%d\\n\", r);\n");
+    s.push_str("    return 0;\n}\n");
+
+    let path = format!("/tmp/equivalence_checker/{}_c_runner.c", function_name);
+    fs::write(&path, s)?;
+    Ok(path)
+}
+
+fn generate_rust_runner(
+    rust_file: &str,
+    function_name: &str,
+    bounds: &[crate::types::InputBound],
+) -> Result<String> {
+    let content = fs::read_to_string(rust_file)?;
+
+    let mut s = String::new();
+    s.push_str("use std::env;\n\n");
+    s.push_str(&content);
+    s.push_str("\n\nfn main() {\n");
+    s.push_str("    let args: Vec<String> = env::args().collect();\n");
+    s.push_str(&format!(
+        "    if args.len() != {} {{ std::process::exit(2); }}\n",
+        bounds.len() + 1
+    ));
+
+    for (i, b) in bounds.iter().enumerate() {
+        s.push_str(&format!(
+            "    let {}: i32 = args[{}].parse().unwrap();\n",
+            b.name, i + 1
+        ));
+    }
+
+    let call_args: Vec<String> = bounds.iter().map(|b| b.name.clone()).collect();
+    s.push_str(&format!("    let r = {}({});\n", function_name, call_args.join(", ")));
+    s.push_str("    println!(\"{}\", r);\n");
+    s.push_str("}\n");
+
+    let path = format!("/tmp/equivalence_checker/{}_rust_runner.rs", function_name);
+    fs::write(&path, s)?;
+    Ok(path)
+}
+
+fn compile_c_runner(c_runner: &str, out_bin: &str) -> Result<()> {
+    let out = Command::new("clang-15")
+        .arg("-O0")
+        .arg(c_runner)
+        .arg("-o")
+        .arg(out_bin)
+        .output()?;
+
+    if !out.status.success() {
+        return Err(CheckerError::CompilationError(
+            format!("C runner build failed:\n{}", String::from_utf8_lossy(&out.stderr))
+        ).into());
+    }
+    Ok(())
+}
+
+fn compile_rust_runner(r_runner: &str, out_bin: &str) -> Result<()> {
+    let out = Command::new("rustup")
+        .args(["run", "1.69.0", "rustc"])
+        .arg("-C").arg("opt-level=0")
+        .arg(r_runner)
+        .arg("-o")
+        .arg(out_bin)
+        .output()?;
+
+    if !out.status.success() {
+        return Err(CheckerError::CompilationError(
+            format!("Rust runner build failed:\n{}", String::from_utf8_lossy(&out.stderr))
+        ).into());
+    }
+    Ok(())
+}
+
 /// Main compilation entry point
 // pub fn compile(config: &AnalysisConfig) -> Result<IrFiles> {
 //     // Create output directory if it doesn't exist
@@ -205,6 +302,40 @@ pub fn compile(config: &AnalysisConfig) -> Result<IrFiles> {
     let c_harness = generate_c_harness(&config.c_file, &config.function_name, &config.bounds)?;
     let rust_harness = generate_rust_harness(&config.rust_file, &config.function_name, &config.bounds)?;
 
+
+
+    println!("  Generating runner programs...");
+    let c_runner_src = generate_c_runner(&config.c_file, &config.function_name, &config.bounds)?;
+    let rust_runner_src = generate_rust_runner(&config.rust_file, &config.function_name, &config.bounds)?;
+
+    let c_runner_bin = format!("/tmp/equivalence_checker/{}_c_runner", config.function_name);
+    let rust_runner_bin = format!("/tmp/equivalence_checker/{}_rust_runner", config.function_name);
+
+    println!("  Compiling runners...");
+    compile_c_runner(&c_runner_src, &c_runner_bin)?;
+    compile_rust_runner(&rust_runner_src, &rust_runner_bin)?;
+    println!("    → C runner: {}", c_runner_bin);
+    println!("    → Rust runner: {}", rust_runner_bin);
+
+
+
+
+
+
+
+    // Dump readable LLVM IR (.ll) for debugging/learning
+    let ll_dir = "output/ir";
+    fs::create_dir_all(ll_dir)?;
+
+    let c_ll_path = format!("{}/{}_c_harness.ll", ll_dir, config.function_name);
+    let rust_ll_path = format!("{}/{}_rust_harness.ll", ll_dir, config.function_name);
+
+    println!("  Dumping human-readable LLVM IR (.ll)...");
+    emit_c_ll(&c_harness, &c_ll_path)?;
+    emit_rust_ll(&rust_harness, &rust_ll_path)?;
+    println!("    → C .ll: {}", c_ll_path);
+    println!("    → Rust .ll: {}", rust_ll_path);
+
     // Generate output file paths
     let c_ir_path = format!("/tmp/equivalence_checker/{}_c.bc", config.function_name);
     let rust_ir_path = format!("/tmp/equivalence_checker/{}_rust.bc", config.function_name);
@@ -244,6 +375,8 @@ pub fn compile(config: &AnalysisConfig) -> Result<IrFiles> {
     Ok(IrFiles {
         c_ir_path,
         rust_ir_path,
+        c_runner_bin,
+        rust_runner_bin,
     })
 }
 
@@ -260,6 +393,8 @@ fn compile_c_to_ir(c_file: &str, output: &str) -> Result<()> {
         .arg("-emit-llvm")
         .arg("-c")
         .arg("-O0")
+        .arg("-Xclang").arg("-disable-llvm-passes")  
+        .arg("-Xclang").arg("-disable-O0-optnone") 
         .arg("-fno-stack-protector")
         .arg("-fno-inline")
         .arg("-I/home/fathima/klee/include")
@@ -335,25 +470,55 @@ fn verify_ir_basic(ir_path: &str) -> Result<()> {
     Ok(())
 }
 
-// ───────────────────────────────────────────────────────
-// OPTIONAL: HELPER TO VIEW IR IN HUMAN-READABLE FORMAT
-// ───────────────────────────────────────────────────────
-
-/// Convert bitcode to human-readable LLVM IR text (for debugging)
-#[allow(dead_code)]
-pub fn dump_ir_to_text(bc_path: &str, output_path: &str) -> Result<()> {
-    let output = Command::new("llvm-dis")
-        .arg(bc_path)
+/// Emit human-readable LLVM IR (.ll) directly for the C harness
+fn emit_c_ll(c_file: &str, out_ll: &str) -> Result<()> {
+    let out = Command::new("clang-15")
+        .arg("-S")
+        .arg("-emit-llvm")
+        .arg("-O0")
+         .arg("-Xclang").arg("-disable-llvm-passes") 
+        .arg("-Xclang").arg("-disable-O0-optnone") 
+        .arg("-fno-stack-protector")
+        .arg("-fno-inline")
+        .arg("-I/home/fathima/klee/include")
+        .arg(c_file)
         .arg("-o")
-        .arg(output_path)
+        .arg(out_ll)
         .output()?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        println!("  Warning: Could not dump IR to text: {}", stderr);
-        return Ok(()); // Don't fail, just warn
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(CheckerError::CompilationError(format!(
+            "C LLVM IR (.ll) generation failed:\n{}",
+            stderr
+        ))
+        .into());
     }
+    Ok(())
+}
 
-    println!("  Dumped IR to: {}", output_path);
+/// Emit human-readable LLVM IR (.ll) directly for the Rust harness
+fn emit_rust_ll(rust_file: &str, out_ll: &str) -> Result<()> {
+    let out = Command::new("rustup")
+        .args(["run", "1.69.0", "rustc"])
+        .arg("--emit=llvm-ir")
+        .arg("-C").arg("opt-level=0")
+        .arg("-C").arg("inline-threshold=0")
+        .arg("-C").arg("debuginfo=0")
+        .arg("-C").arg("overflow-checks=off")
+        .arg("--crate-type=lib")
+        .arg(rust_file)
+        .arg("-o")
+        .arg(out_ll)
+        .output()?;
+
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        return Err(CheckerError::CompilationError(format!(
+            "Rust LLVM IR (.ll) generation failed:\n{}",
+            stderr
+        ))
+        .into());
+    }
     Ok(())
 }

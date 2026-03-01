@@ -1,0 +1,307 @@
+{
+  "verdict": "Equivalent",
+  "paths_compared": 14,
+  "counterexample": null,
+  "time_taken": 0.018783837,
+  "test_cases": [
+    {
+      "inputs": [
+        [
+          "x",
+          -8
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "-1",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "-1",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          0
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "0",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "0",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          1
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "1",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "1",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          8
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "1",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "1",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          16
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          23
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          28
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          29
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          32
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          42
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          47
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          49
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          55
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          93
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "2",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    }
+  ],
+  "stats": {
+    "total_tests": 14,
+    "equivalent_tests": 14,
+    "non_equivalent_tests": 0
+  }
+}

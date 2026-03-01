@@ -9,17 +9,17 @@
       ],
       [
         "y",
-        15
+        57
       ]
     ],
     "c_behavior": {
-      "return_value": "0",
+      "return_value": "57",
       "stdout": [],
       "stderr": [],
       "globals": []
     },
     "rust_behavior": {
-      "return_value": "15",
+      "return_value": "0",
       "stdout": [],
       "stderr": [],
       "globals": []
@@ -27,12 +27,12 @@
     "differences": [
       {
         "kind": "ReturnValue",
-        "c_value": "0",
-        "rust_value": "15"
+        "c_value": "57",
+        "rust_value": "0"
       }
     ]
   },
-  "time_taken": 0.00489828,
+  "time_taken": 0.006163644,
   "test_cases": [
     {
       "inputs": [
@@ -67,17 +67,17 @@
         ],
         [
           "y",
-          15
+          57
         ]
       ],
       "c_behavior": {
-        "return_value": "0",
+        "return_value": "57",
         "stdout": [],
         "stderr": [],
         "globals": []
       },
       "rust_behavior": {
-        "return_value": "15",
+        "return_value": "0",
         "stdout": [],
         "stderr": [],
         "globals": []
@@ -85,8 +85,8 @@
       "differences": [
         {
           "kind": "ReturnValue",
-          "c_value": "0",
-          "rust_value": "15"
+          "c_value": "57",
+          "rust_value": "0"
         }
       ]
     }

@@ -123,7 +123,12 @@ fn main() -> Result<()> {
 
     // Step 6: Equivalence Checking
     println!("\n{}", "[ Step 6/7 ] Checking Equivalence (Z3)...".bold().white());
-    let result = equivalence::check(&config, &summaries)?;
+    let result = equivalence::check(
+            &config,
+            &summaries,
+            &ir_files.c_runner_bin,
+            &ir_files.rust_runner_bin,
+        )?;
 
     // Print verdict
     println!("\n{}", "═".repeat(60).blue());

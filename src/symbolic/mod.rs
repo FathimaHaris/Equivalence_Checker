@@ -60,7 +60,7 @@ fn run_klee(
     ir_path: &str,
     function_name: &str,
     _bounds: &[crate::types::InputBound],
-    _max_paths: u32,
+    max_paths: u32,
     timeout: u32,
     program_kind: ProgramKind,
 ) -> Result<Vec<PathSummary>> {
@@ -79,12 +79,20 @@ fn run_klee(
     
     // Output directory
     cmd.arg("--output-dir").arg(&klee_out_dir);
+
+    cmd.arg("--optimize=false");
     
     // Search heuristics
-    cmd.arg("--search=dfs");  // Depth-first search
+    // cmd.arg("--search=dfs");  // Depth-first search
+
+    cmd.arg("--search=random-path");  // Better than DFS for coverage
+    cmd.arg("--search=nurs:covnew");   // Coverage-optimized search
+
     
     // Limits
     cmd.arg(format!("--max-time={}", timeout));
+
+    cmd.arg(format!("--max-tests={}", max_paths));
     
     // Simplify constraints
     cmd.arg("--simplify-sym-indices");
@@ -92,7 +100,24 @@ fn run_klee(
     // Generate test cases
     cmd.arg("--write-test-info");
     cmd.arg("--write-paths");
+    cmd.arg("--write-kqueries");
+
+
+
+    cmd.arg("--max-memory=1000");  // Limit memory
+    cmd.arg("--only-output-states-covering-new");
     
+
+
+    match program_kind {
+    ProgramKind::C => {
+        cmd.arg("--entry-point=main");
+    }
+    ProgramKind::Rust => {
+        cmd.arg("--entry-point=klee_harness");
+    }
+    }
+
     // Input bitcode file
     cmd.arg(ir_path);
     
@@ -117,11 +142,11 @@ fn run_klee(
     // Parse KLEE output to extract path summaries
     let summaries = parse_klee_output(&klee_out_dir, program_kind.clone())?;
 
-    // If no paths found, create a simple default path
-    if summaries.is_empty() {
-        println!("    (No paths found - creating default summary)");
-        return Ok(vec![create_default_summary(function_name, program_kind)]);
-    }
+    // // If no paths found, create a simple default path
+    // if summaries.is_empty() {
+    //     println!("    (No paths found - creating default summary)");
+    //     return Ok(vec![create_default_summary(function_name, program_kind)]);
+    // }
 
     Ok(summaries)
 }
@@ -197,18 +222,19 @@ fn parse_klee_output(klee_dir: &str, program_kind: ProgramKind) -> Result<Vec<Pa
 }
 
 
-fn create_default_summary(function_name: &str, program_kind: ProgramKind) -> PathSummary {
-    PathSummary {
-        id: format!("{:?}-default", program_kind),
-        program: program_kind,
-        path_condition: vec!["true".to_string()],
-        return_expr: format!("{}(...)", function_name),
-        stdout_log: vec![],
-        stderr_log: vec![],
-        global_writes: vec![],
-        file_ops: vec![],
-    }
-}
+// fn create_default_summary(function_name: &str, program_kind: ProgramKind) -> PathSummary {
+//     PathSummary {
+//         id: format!("{:?}-default", program_kind),
+//         program: program_kind,
+//         path_condition: vec!["true".to_string()],
+//         return_expr: format!("{}(...)", function_name),
+//         stdout_log: vec![],
+//         stderr_log: vec![],
+//         global_writes: vec![],
+//         file_ops: vec![],
+            // witness: vec![],
+//     }
+// }
 
 #[allow(dead_code)]
 pub fn display_klee_stats(klee_dir: &str) -> Result<()> {
@@ -229,94 +255,53 @@ pub fn display_klee_stats(klee_dir: &str) -> Result<()> {
 // ───────────────────────────────────────────────────────
 
 /// Parse KLEE .kquery files to extract symbolic path conditions
-fn parse_kquery_file(kquery_path: &Path) -> Result<Vec<String>> {
-    let content = fs::read_to_string(kquery_path)?;
-    let mut constraints = Vec::new();
+// fn parse_kquery_file(kquery_path: &Path) -> Result<Vec<String>> {
+//     let content = fs::read_to_string(kquery_path)?;
+//     let mut constraints = Vec::new();
     
-    // Parse constraints from kquery format
-    // Example: (Sle 0 N0:(ReadLSB w32 0 x)) means "0 <= x"
-    for line in content.lines() {
-        if line.trim().starts_with("(Sle") || line.trim().starts_with("(Sgt") || 
-           line.trim().starts_with("(Eq") || line.trim().starts_with("(Ult") {
-            let constraint = simplify_constraint(line.trim());
-            if !constraint.is_empty() {
-                constraints.push(constraint);
-            }
-        }
-    }
+//     // Parse constraints from kquery format
+//     // Example: (Sle 0 N0:(ReadLSB w32 0 x)) means "0 <= x"
+//     for line in content.lines() {
+//         if line.trim().starts_with("(Sle") || line.trim().starts_with("(Sgt") || 
+//            line.trim().starts_with("(Eq") || line.trim().starts_with("(Ult") {
+//             let constraint = simplify_constraint(line.trim());
+//             if !constraint.is_empty() {
+//                 constraints.push(constraint);
+//             }
+//         }
+//     }
     
-    Ok(constraints)
-}
+//     Ok(constraints)
+// }
 
-/// Simplify KLEE constraint to human-readable form
-fn simplify_constraint(klee_expr: &str) -> String {
-    // (Sle 0 (ReadLSB w32 0 x)) → "x >= 0"
-    if klee_expr.contains("Sle 0") && klee_expr.contains("ReadLSB") {
-        if let Some(var) = extract_variable(klee_expr) {
-            return format!("{} >= 0", var);
-        }
-    }
-    
-    // (Sle N0 100) → "x <= 100" (where N0 is x)
-    if klee_expr.contains("Sle N0") && klee_expr.contains("100") {
-        return "x <= 100".to_string();
-    }
-    
-    // (Sgt (ReadLSB w32 0 x) 10) → "x > 10"
-    if klee_expr.contains("Sgt") && klee_expr.contains("10") {
-        if let Some(var) = extract_variable(klee_expr) {
-            return format!("{} > 10", var);
-        }
-    }
-    
-    // Return raw if can't parse
-    klee_expr.to_string()
-}
 
-fn extract_variable(expr: &str) -> Option<String> {
-    // Extract variable name from ReadLSB expression
-    if let Some(start) = expr.find("ReadLSB") {
-        if let Some(end) = expr[start..].find(')') {
-            let part = &expr[start..start+end];
-            // Look for single letter variables x, y, z
-            for c in part.chars() {
-                if c.is_alphabetic() && c.is_lowercase() {
-                    return Some(c.to_string());
-                }
-            }
-        }
-    }
-    None
-}
 
-/// Parse .ktest file to get concrete witness values
 fn parse_ktest_file(ktest_path: &Path) -> Result<Vec<(String, i32)>> {
-    // Use ktest-tool to extract values
     let output = Command::new("ktest-tool")
         .arg(ktest_path)
         .output()?;
-    
+
     if !output.status.success() {
         return Ok(vec![]);
     }
-    
+
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut values = Vec::new();
-    
+
     let mut current_name = String::new();
-    
+
     for line in stdout.lines() {
         if line.contains("name:") {
             // object 0: name: 'x'
             if let Some(start) = line.find('\'') {
-                if let Some(end) = line[start+1..].find('\'') {
-                    current_name = line[start+1..start+1+end].to_string();
+                if let Some(end) = line[start + 1..].find('\'') {
+                    current_name = line[start + 1..start + 1 + end].to_string();
                 }
             }
         } else if line.contains("int :") && !current_name.is_empty() {
             // object 0: int : 10
             if let Some(colon_pos) = line.rfind(':') {
-                let value_str = line[colon_pos+1..].trim();
+                let value_str = line[colon_pos + 1..].trim();
                 if let Ok(value) = value_str.parse::<i32>() {
                     values.push((current_name.clone(), value));
                     current_name.clear();
@@ -324,8 +309,54 @@ fn parse_ktest_file(ktest_path: &Path) -> Result<Vec<(String, i32)>> {
             }
         }
     }
-    
+
     Ok(values)
+}
+
+
+fn parse_kquery_file(kquery_path: &Path) -> Result<Vec<String>> {
+    let content = fs::read_to_string(kquery_path)?;
+
+    // Find the constraints list inside: (query [ ... ] false)
+    let start = content.find("(query [")
+        .ok_or_else(|| anyhow::anyhow!("kquery missing '(query ['"))?;
+    let after = &content[start + "(query [".len()..];
+
+    let end = after.find("]")  // end of the constraint list
+        .ok_or_else(|| anyhow::anyhow!("kquery missing closing ']'"))?;
+    let list = &after[..end];
+
+    // Now parse balanced (...) expressions from `list`
+    let mut constraints = Vec::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+
+    for ch in list.chars() {
+        if ch == '(' {
+            if depth == 0 {
+                cur.clear();
+            }
+            depth += 1;
+        }
+
+        if depth > 0 {
+            cur.push(ch);
+        }
+
+        if ch == ')' && depth > 0 {
+            depth -= 1;
+            if depth == 0 {
+                constraints.push(cur.trim().to_string());
+            }
+        }
+    }
+
+    if constraints.is_empty() {
+        // If there are truly no constraints, treat as true
+        constraints.push("true".to_string());
+    }
+
+    Ok(constraints)
 }
 
 /// Build complete path summary from KLEE files
@@ -345,15 +376,30 @@ fn build_path_summary_from_klee(
     };
     
     // Parse concrete witness from .ktest
-    let witness = parse_ktest_file(Path::new(&ktest_file))?;
+    let witness_i32 = parse_ktest_file(Path::new(&ktest_file))?;
+    let witness: Vec<(String, i64)> = witness_i32
+        .into_iter()
+        .map(|(n, v)| (n, v as i64))
+        .collect();
+    println!("      witness: {:?}", witness);
     
-    // Build return expression based on path condition
-    let return_expr = if path_condition.iter().any(|c| c.contains("x > 10")) {
-        "x + y".to_string()
+    // For now, we don't infer symbolic return.
+    // It will be handled in the equivalence module.
+    // Change this line in build_path_summary_from_klee:
+    // let return_expr = extract_return_expr_from_klee(Path::new(&kquery_file))?;
+    // // Or convert String to Path:
+    // let return_expr = extract_return_expr_from_klee(kquery_file.as_ref())?;
+
+
+    let return_expr = if Path::new(&kquery_file).exists() {
+        extract_return_expr_from_klee(Path::new(&kquery_file))?
     } else {
-        "x * y".to_string()
+        "UNKNOWN".to_string()
     };
-    
+
+
+
+
     Ok(PathSummary {
         id: format!("{:?}-{}", program_kind, test_num),
         program: program_kind,
@@ -363,5 +409,92 @@ fn build_path_summary_from_klee(
         stderr_log: vec![],
         global_writes: vec![],
         file_ops: vec![],
+        witness,
     })
+}
+
+
+/// Extract return expression from KLEE query file
+fn extract_return_expr_from_klee(kquery_path: &Path) -> Result<String> {
+    let content = fs::read_to_string(kquery_path)?;
+    
+    // Look for the query expression that represents the return value
+    // This is a simplified approach - you'll need to adapt based on your KLEE output
+    
+    // Common patterns:
+    // 1. Look for return variable (often named "result" or the function return)
+    if content.contains("result") {
+        // Try to find expression for result
+        if let Some(expr) = extract_expr_for_var(&content, "result") {
+            return Ok(expr);
+        }
+    }
+    
+    // 2. Look for the last expression before false
+    if let Some(query_start) = content.find("(query [") {
+        let after_query = &content[query_start + 7..];
+        if let Some(expr_end) = after_query.find(" false") {
+            let expr_part = &after_query[..expr_end];
+            // Extract the last expression which might be the return
+            if let Some(last_expr) = extract_last_expression(expr_part) {
+                return Ok(last_expr);
+            }
+        }
+    }
+    
+    // Fallback: return UNKNOWN but with a warning
+    println!("      Warning: Could not extract return expression from KLEE");
+    Ok("UNKNOWN".to_string())
+}
+
+fn extract_expr_for_var(content: &str, var_name: &str) -> Option<String> {
+    // Look for patterns like: (= result (+ x y))
+    let pattern = format!("(= {} ", var_name);
+    if let Some(start) = content.find(&pattern) {
+        let start = start + pattern.len();
+        let mut depth = 1;
+        let mut end = start;
+        
+        for (i, c) in content[start..].chars().enumerate() {
+            if c == '(' { depth += 1; }
+            else if c == ')' { 
+                depth -= 1;
+                if depth == 0 {
+                    end = start + i;
+                    break;
+                }
+            }
+        }
+        
+        if end > start {
+            return Some(content[start..=end].to_string());
+        }
+    }
+    None
+}
+
+fn extract_last_expression(expr_part: &str) -> Option<String> {
+    let mut depth = 0;
+    let mut last_expr_start = 0;
+    
+    for (i, c) in expr_part.char_indices() {
+        if c == '(' {
+            if depth == 0 {
+                last_expr_start = i;
+            }
+            depth += 1;
+        } else if c == ')' {
+            depth -= 1;
+            if depth == 0 {
+                // Found a complete expression
+                last_expr_start = i + 1; // Start after this one
+            }
+        }
+    }
+    
+    if last_expr_start < expr_part.len() {
+        Some(expr_part[last_expr_start..].trim().to_string())
+    } else {
+        None
+    }
 }

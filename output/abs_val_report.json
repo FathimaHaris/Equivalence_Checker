@@ -1,0 +1,223 @@
+{
+  "verdict": "Equivalent",
+  "paths_compared": 10,
+  "counterexample": null,
+  "time_taken": 0.019415459,
+  "test_cases": [
+    {
+      "inputs": [
+        [
+          "x",
+          0
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "0",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "0",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          6
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "6",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "6",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          13
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "13",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "13",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          22
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "22",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "22",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          44
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "44",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "44",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          46
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "46",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "46",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          64
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "64",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "64",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          70
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "70",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "70",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          82
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "82",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "82",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    },
+    {
+      "inputs": [
+        [
+          "x",
+          93
+        ]
+      ],
+      "c_behavior": {
+        "return_value": "93",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "rust_behavior": {
+        "return_value": "93",
+        "stdout": [],
+        "stderr": [],
+        "globals": []
+      },
+      "differences": []
+    }
+  ],
+  "stats": {
+    "total_tests": 10,
+    "equivalent_tests": 10,
+    "non_equivalent_tests": 0
+  }
+}

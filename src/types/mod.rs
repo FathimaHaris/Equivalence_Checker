@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+
 // ───────────────────────────────────────────────────────
 // INPUT TYPES
 // ───────────────────────────────────────────────────────
@@ -107,6 +108,8 @@ pub struct PathSummary {
 
     /// File operations logged
     pub file_ops: Vec<FileOperation>,
+
+    pub witness: Vec<(String, i64)>,
 }
 
 /// Which program a path belongs to
@@ -128,6 +131,35 @@ pub struct FileOperation {
 // EQUIVALENCE RESULT TYPES (output of Z3)
 // ───────────────────────────────────────────────────────
 
+/// One concrete input test case and both programs' behaviors on it
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestCaseResult {
+    /// Concrete input values e.g. [("x", 10), ("y", 5)]
+    pub inputs: Vec<(String, i64)>,
+
+    pub c_behavior: BehaviorSnapshot,
+    pub rust_behavior: BehaviorSnapshot,
+
+    /// Differences found for this test (empty = equivalent for this input)
+    pub differences: Vec<Difference>,
+}
+
+/// Optional: summary counts (nice for report)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ComparisonStats {
+    pub total_tests: u32,
+    pub equivalent_tests: u32,
+    pub non_equivalent_tests: u32,
+}
+
+
+
+
+
+
+
+
+
 /// Final verdict from Z3
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EquivalenceResult {
@@ -142,6 +174,13 @@ pub struct EquivalenceResult {
 
     /// Time taken in seconds
     pub time_taken: f64,
+
+
+    /// NEW: all observed behaviors (Step 6.3)
+    pub test_cases: Vec<TestCaseResult>,
+
+    /// NEW: report-friendly stats
+    pub stats: ComparisonStats,
 }
 
 /// The verdict
