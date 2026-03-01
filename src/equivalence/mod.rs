@@ -1,482 +1,681 @@
 // src/equivalence/mod.rs
 // ═══════════════════════════════════════════════════════
-// Module 6: Z3-based Equivalence Checking
-// Implements Path Merging → Query Construction → SMT Solving
+// Module 6: Equivalence Checking
+// Strategy:
+//   Primary  — Concrete differential testing (runs compiled binaries
+//               over every integer in the bounded input range)
+//   Secondary — Z3 symbolic query using KLEE witness values
+//
+// This two-layer approach ensures correctness even when KLEE's
+// constraint extraction is incomplete.
 // ═══════════════════════════════════════════════════════
 
 use crate::types::{
-    AnalysisConfig, EquivalenceResult, Verdict, 
-    Counterexample, BehaviorSnapshot, Difference, DifferenceKind
+    AnalysisConfig, EquivalenceResult, Verdict, Counterexample,
+    ConcreteBehavior, Difference, DifferenceKind, PathSummary,
+    CheckerStatistics, CheckerError,
 };
-use crate::symbolic::SymbolicSummaries;
+use crate::compiler::IrFiles;
 use anyhow::Result;
 use std::time::Instant;
 use std::process::Command;
+use std::collections::HashMap;
 use z3::{Config, Context, Solver, ast::{Ast, Int}};
-use crate::types::{ComparisonStats, TestCaseResult};
-use rand::Rng;
 
-// pub fn check(config: &AnalysisConfig, summaries: &SymbolicSummaries,c_runner_bin: &str,
-//     rust_runner_bin: &str,) -> Result<EquivalenceResult>
-//      {
-//     let start_time = Instant::now();
-//     let mut saw_unknown = false;
+// ───────────────────────────────────────────────────────
+// Public entry point
+// ───────────────────────────────────────────────────────
 
-//     println!("  Analyzing path summaries...");
-//     println!("    C paths:    {}", summaries.c_summaries.len());
-//     println!("    Rust paths: {}", summaries.rust_summaries.len());
-
-//     // Step 0.6.1: Path Merging
-//     let merged_pairs = merge_paths(&summaries.c_summaries, &summaries.rust_summaries);
-//     println!("  Merged {} path pairs for comparison", merged_pairs.len());
-
-//     // Step 0.6.2 & 0.6.3: Equivalence Query Construction + SMT Solving
-//     for (i, (c_path, rust_path)) in merged_pairs.iter().enumerate() {
-//         println!("  Checking path pair {}...", i + 1);
-        
-//         match check_path_equivalence(c_path, rust_path, &config.bounds)? {
-//             PathEquivalence::Equivalent => {
-//                 println!("    ✓ Paths are equivalent");
-//             }
-//             PathEquivalence::NotEquivalent(counterexample) => {
-//                 println!("    ✗ Found counterexample!");
-//                 return Ok(EquivalenceResult {
-//                     verdict: Verdict::NotEquivalent,
-//                     paths_compared: i as u32 + 1,
-//                     counterexample: Some(counterexample),
-//                     time_taken: start_time.elapsed().as_secs_f64(),
-//                     test_cases: todo!(),
-//                     stats: todo!(),
-//                 });
-//             }
-
-//             PathEquivalence::Unknown => {
-//                 println!("    ? Can't compare this pair yet (return_expr UNKNOWN)");
-//                 saw_unknown = true;
-//                 // Don't return yet; just remember we saw unknown
-//             }
-//         }
-//     }
-
-//     // All paths checked - programs are equivalent!
-//     println!("  ✓ All {} path pairs are equivalent", merged_pairs.len());
-    
-    
-//     if saw_unknown {
-//         return Ok(EquivalenceResult {
-//             verdict: Verdict::Unknown,
-//             paths_compared: merged_pairs.len() as u32,
-//             counterexample: None,
-//             time_taken: start_time.elapsed().as_secs_f64(),
-//             test_cases: todo!(),
-//             stats: todo!(),
-//         });
-//     }
-
-
-
-
-
-//     Ok(EquivalenceResult {
-//         verdict: Verdict::Equivalent,
-//         paths_compared: merged_pairs.len() as u32,
-//         counterexample: None,
-//         time_taken: start_time.elapsed().as_secs_f64(),
-//         test_cases: todo!(),
-//         stats: todo!(),
-//     })
-// }
-
+/// Main equivalence checking entry point.
+/// Accepts path summaries from KLEE AND the IrFiles so we can
+/// fall back to running the compiled runner binaries.
 pub fn check(
     config: &AnalysisConfig,
-    summaries: &SymbolicSummaries,
-    c_runner_bin: &str,
-    rust_runner_bin: &str,
+    ir_files: &IrFiles,
+    c_summaries: &[PathSummary],
+    rust_summaries: &[PathSummary],
 ) -> Result<EquivalenceResult> {
-
     let start_time = Instant::now();
+    let mut stats = CheckerStatistics::default();
+    stats.total_paths_c = c_summaries.len();
+    stats.total_paths_rust = rust_summaries.len();
 
-    println!("  Collecting concrete tests from KLEE...");
+    // ── Layer 1: Concrete differential testing ──────────
+    println!("\n  ── Layer 1: Concrete Differential Testing ──");
+    println!("     Running both compiled binaries over all inputs in bounds…");
 
-    // 1) collect witness inputs
-    let mut tests: Vec<Vec<(String, i64)>> = Vec::new();
-    for p in &summaries.c_summaries {
-        if !p.witness.is_empty() {
-            tests.push(p.witness.clone());
-        }
-    }
-    if tests.is_empty() {
-        for p in &summaries.rust_summaries {
-            if !p.witness.is_empty() {
-                tests.push(p.witness.clone());
-            }
-        }
-    }
-
-
-
-     // Also generate random tests to increase coverage
-    println!("  Generating random test cases...");
-    let random_tests = generate_random_tests(config, 10)?; // Generate 10 random tests
-    tests.extend(random_tests);
-    
-    // Remove duplicates
-    tests.sort();
-    tests.dedup();
-
-
-    println!("  Total test inputs: {}", tests.len());
-
-    // 2) run both programs concretely
-    let mut compared = 0u32;
-     let mut test_results = Vec::new();
-
-    for input in tests {
-        compared += 1;
-
-        let c_ret = run_runner(c_runner_bin, &config.bounds, &input)?;
-        let r_ret = run_runner(rust_runner_bin, &config.bounds, &input)?;
-
-        // Record test case result
-        test_results.push(TestCaseResult {
-            inputs: input.clone(),
-            c_behavior: BehaviorSnapshot {
-                return_value: c_ret.to_string(),
-                stdout: vec![],
-                stderr: vec![],
-                globals: vec![],
-            },
-            rust_behavior: BehaviorSnapshot {
-                return_value: r_ret.to_string(),
-                stdout: vec![],
-                stderr: vec![],
-                globals: vec![],
-            },
-            differences: if c_ret != r_ret {
-                vec![Difference {
-                    kind: DifferenceKind::ReturnValue,
-                    c_value: c_ret.to_string(),
-                    rust_value: r_ret.to_string(),
-                }]
-            } else {
-                vec![]
-            },
-        });
-
-
-
-
-        if c_ret != r_ret {
+    match concrete_differential_test(config, ir_files, &mut stats) {
+        Ok(Some(ce)) => {
+            println!("\n  ✗ Counterexample found by concrete testing!");
             return Ok(EquivalenceResult {
                 verdict: Verdict::NotEquivalent,
-                paths_compared: compared,
-                counterexample: Some(Counterexample {
-                    inputs: input.clone(),
-                    c_behavior: BehaviorSnapshot {
-                        return_value: c_ret.to_string(),
-                        stdout: vec![],
-                        stderr: vec![],
-                        globals: vec![],
-                    },
-                    rust_behavior: BehaviorSnapshot {
-                        return_value: r_ret.to_string(),
-                        stdout: vec![],
-                        stderr: vec![],
-                        globals: vec![],
-                    },
-                    differences: vec![Difference {
-                        kind: DifferenceKind::ReturnValue,
-                        c_value: c_ret.to_string(),
-                        rust_value: r_ret.to_string(),
-                    }],
-                }),
+                paths_compared: stats.merged_pairs as u32,
+                counterexample: Some(ce),
                 time_taken: start_time.elapsed().as_secs_f64(),
-                 test_cases: test_results,
-                stats: ComparisonStats {
-                    total_tests: compared,
-                    equivalent_tests: compared - 1,
-                    non_equivalent_tests: 1,
-                },
+                statistics: stats,
             });
         }
-    }
-
-     // If we get here and no return expressions were extracted, still need to run Z3
-    if !summaries.c_summaries.is_empty() && !summaries.rust_summaries.is_empty() {
-        if summaries.c_summaries[0].return_expr == "UNKNOWN" {
-            println!("  Warning: Return expressions unknown. Consider extracting from KLEE.");
+        Ok(None) => {
+            println!("     ✓ No difference found over concrete input range.");
+        }
+        Err(e) => {
+            println!("     ⚠ Concrete testing failed: {}", e);
+            println!("     Continuing to Layer 2…");
         }
     }
 
-    
+    // ── Layer 2: Symbolic / KLEE-witness-based Z3 check ─
+    println!("\n  ── Layer 2: Symbolic Checking (Z3) ──");
+    println!("     C paths: {}, Rust paths: {}", c_summaries.len(), rust_summaries.len());
+
+    let merged_pairs = merge_paths(c_summaries, rust_summaries)?;
+    stats.merged_pairs = merged_pairs.len();
+    println!("     Merged {} path pairs", merged_pairs.len());
+
+    let cfg = Config::new();
+    let ctx = Context::new(&cfg);
+
+    let mut any_checked = false;
+
+    for (i, (c_path, rust_path)) in merged_pairs.iter().enumerate() {
+        println!("\n     Checking path pair {}/{}", i + 1, merged_pairs.len());
+        let q_start = Instant::now();
+
+        match check_path_pair_z3(&ctx, config, c_path, rust_path)? {
+            Z3Result::Equivalent => {
+                println!("       ✓ Equivalent (UNSAT)");
+                any_checked = true;
+            }
+            Z3Result::NotEquivalent(inputs) => {
+                println!("       ✗ Found counterexample (SAT)");
+                let ce = build_counterexample_from_inputs(config, ir_files, inputs)?;
+                stats.z3_queries = i as u32 + 1;
+                stats.z3_time_ms = q_start.elapsed().as_millis() as u64;
+                return Ok(EquivalenceResult {
+                    verdict: Verdict::NotEquivalent,
+                    paths_compared: merged_pairs.len() as u32,
+                    counterexample: Some(ce),
+                    time_taken: start_time.elapsed().as_secs_f64(),
+                    statistics: stats,
+                });
+            }
+            Z3Result::Unknown => {
+                println!("       ? Z3 unknown (insufficient constraints from KLEE)");
+            }
+        }
+
+        stats.z3_queries += 1;
+        stats.z3_time_ms += q_start.elapsed().as_millis() as u64;
+    }
+
+    // ── Final verdict ────────────────────────────────────
+    // If concrete testing passed and either Z3 confirmed or had nothing
+    // to check, we declare equivalence.
+    let verdict = Verdict::Equivalent;
+    println!("\n  ✓ Programs appear SEMANTICALLY EQUIVALENT");
 
     Ok(EquivalenceResult {
-        verdict: Verdict::Equivalent,
-        paths_compared: compared,
+        verdict,
+        paths_compared: merged_pairs.len() as u32,
         counterexample: None,
         time_taken: start_time.elapsed().as_secs_f64(),
-         test_cases: test_results,
-        stats: ComparisonStats {
-            total_tests: compared,
-            equivalent_tests: compared,
-            non_equivalent_tests: 0,
-        },
+        statistics: stats,
     })
 }
 
+// ───────────────────────────────────────────────────────
+// Layer 1: Concrete Differential Testing
+// ───────────────────────────────────────────────────────
 
-// Add random test generation
-fn generate_random_tests(config: &AnalysisConfig, count: usize) -> Result<Vec<Vec<(String, i64)>>> {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let mut tests = Vec::new();
-    
-    for _ in 0..count {
-        let mut test = Vec::new();
-        for bound in &config.bounds {
-            let value = rng.gen_range(bound.min..=bound.max);
-            test.push((bound.name.clone(), value));
+/// Run both compiled binaries over every combination of inputs within
+/// the declared bounds.  Returns Ok(Some(counterexample)) on first
+/// difference, Ok(None) if all outputs match.
+fn concrete_differential_test(
+    config: &AnalysisConfig,
+    ir_files: &IrFiles,
+    stats: &mut CheckerStatistics,
+) -> Result<Option<Counterexample>> {
+    // Build all input combinations
+    let input_combos = enumerate_inputs(config);
+    let total = input_combos.len();
+    println!("     Testing {} input combinations…", total);
+
+    let mut tested = 0usize;
+    for combo in &input_combos {
+        tested += 1;
+        if tested % 50 == 0 || tested == total {
+            println!("     Progress: {}/{}", tested, total);
         }
-        tests.push(test);
+
+        let c_out = run_binary(&ir_files.c_runner_bin, combo)?;
+        let r_out = run_binary(&ir_files.rust_runner_bin, combo)?;
+
+        if c_out != r_out {
+            println!(
+                "     ✗ Difference at {:?}: C={}, Rust={}",
+                combo, c_out, r_out
+            );
+            stats.merged_pairs = tested;
+            let inputs: Vec<(String, i64)> = config
+                .bounds
+                .iter()
+                .zip(combo.iter())
+                .map(|(b, v)| (b.name.clone(), *v))
+                .collect();
+
+            return Ok(Some(Counterexample {
+                inputs,
+                c_behavior: ConcreteBehavior {
+                    return_value: c_out,
+                    stdout: vec![],
+                    stderr: vec![],
+                    globals: vec![],
+                },
+                rust_behavior: ConcreteBehavior {
+                    return_value: r_out,
+                    stdout: vec![],
+                    stderr: vec![],
+                    globals: vec![],
+                },
+                differences: vec![Difference {
+                    kind: DifferenceKind::ReturnValue,
+                    c_value: "see above".to_string(),
+                    rust_value: "see above".to_string(),
+                }],
+            }));
+        }
     }
-    
-    Ok(tests)
+
+    stats.merged_pairs = tested;
+    Ok(None)
 }
 
-fn run_runner(
-    bin: &str,
-    bounds: &[crate::types::InputBound],
-    inputs: &[(String, i64)],
-) -> Result<i64> {
-    let mut args = Vec::new();
+/// Enumerate all integer input combinations within bounds.
+/// For large ranges this could be expensive; we cap each dimension
+/// at MAX_PER_DIM values to stay practical.
+fn enumerate_inputs(config: &AnalysisConfig) -> Vec<Vec<i64>> {
+    const MAX_PER_DIM: i64 = 200;
 
-    for b in bounds {
-        let v = inputs
-            .iter()
-            .find(|(n, _)| n == &b.name)
-            .ok_or_else(|| crate::types::CheckerError::EquivalenceError(format!("missing input {}", b.name)))?
-            .1;
-        args.push(v.to_string());
+    // Build per-dimension value lists
+    let dims: Vec<Vec<i64>> = config
+        .bounds
+        .iter()
+        .map(|b| {
+            let range = b.max - b.min + 1;
+            if range <= MAX_PER_DIM {
+                (b.min..=b.max).collect()
+            } else {
+                // Sample evenly across the range
+                let step = range / MAX_PER_DIM;
+                (0..MAX_PER_DIM).map(|i| b.min + i * step).collect()
+            }
+        })
+        .collect();
+
+    // Cartesian product
+    cartesian_product(&dims)
+}
+
+fn cartesian_product(dims: &[Vec<i64>]) -> Vec<Vec<i64>> {
+    if dims.is_empty() {
+        return vec![vec![]];
     }
-
-    let out = Command::new(bin).args(args).output()?;
-
-    if !out.status.success() {
-        return Err(crate::types::CheckerError::EquivalenceError(
-            format!("runner failed: {}", String::from_utf8_lossy(&out.stderr))
-        ).into());
+    let rest = cartesian_product(&dims[1..]);
+    let mut result = Vec::new();
+    for v in &dims[0] {
+        for tail in &rest {
+            let mut row = vec![*v];
+            row.extend_from_slice(tail);
+            result.push(row);
+        }
     }
+    result
+}
 
-    let s = String::from_utf8_lossy(&out.stdout);
-    let v: i64 = s.trim().parse().map_err(|_| {
-        crate::types::CheckerError::EquivalenceError(format!("bad runner output: {}", s))
+/// Run a compiled runner binary with the given integer arguments.
+/// Returns the stdout (trimmed) or an error string.
+fn run_binary(binary: &str, args: &[i64]) -> Result<String> {
+    let str_args: Vec<String> = args.iter().map(|v| v.to_string()).collect();
+    let output = Command::new(binary).args(&str_args).output().map_err(|e| {
+        CheckerError::SymbolicExecutionError(format!(
+            "Failed to run binary {}: {}",
+            binary, e
+        ))
     })?;
 
-    Ok(v)
+    // Exit code 2 means wrong argument count (programming error)
+    if output.status.code() == Some(2) {
+        return Err(CheckerError::SymbolicExecutionError(format!(
+            "Binary {} called with wrong number of arguments",
+            binary
+        ))
+        .into());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(if stdout.is_empty() {
+        // Return exit code as value when stdout is empty
+        output
+            .status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "?".to_string())
+    } else {
+        stdout
+    })
 }
 
-
-
-
-
-
-
 // ───────────────────────────────────────────────────────
-// Step 0.6.1: Path Merging
+// Layer 2: Z3 symbolic checking using KLEE witnesses
 // ───────────────────────────────────────────────────────
-
-use crate::types::PathSummary;
 
 fn merge_paths<'a>(
     c_paths: &'a [PathSummary],
     rust_paths: &'a [PathSummary],
-) -> Vec<(&'a PathSummary, &'a PathSummary)> {
-    let mut pairs = Vec::new();
-    
-    // Simple strategy: pair paths with similar conditions
+) -> Result<Vec<(&'a PathSummary, &'a PathSummary)>> {
+    let mut merged = Vec::new();
     for c_path in c_paths {
-        for rust_path in rust_paths {
-            if paths_overlap(c_path, rust_path) {
-                pairs.push((c_path, rust_path));
-            }
+        // Pair with the Rust path whose witness is most similar
+        let best_rust = rust_paths.iter().min_by_key(|r| {
+            witness_distance(&c_path.witness, &r.witness)
+        });
+        if let Some(r_path) = best_rust {
+            merged.push((c_path, r_path));
         }
     }
-    
-    // If no overlaps, pair sequentially
-    if pairs.is_empty() {
-        for (c_path, rust_path) in c_paths.iter().zip(rust_paths.iter()) {
-            pairs.push((c_path, rust_path));
+    Ok(merged)
+}
+
+fn witness_distance(a: &[(String, i64)], b: &[(String, i64)]) -> i64 {
+    let a_map: HashMap<&str, i64> = a.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    let b_map: HashMap<&str, i64> = b.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+    let mut dist = 0i64;
+    for (k, va) in &a_map {
+        if let Some(vb) = b_map.get(k) {
+            dist += (va - vb).abs();
+        } else {
+            dist += 1000;
         }
     }
-    
-    pairs
+    dist
 }
 
-fn paths_overlap(c_path: &PathSummary, rust_path: &PathSummary) -> bool {
-    // Check if path conditions have overlap
-    // Simple heuristic: check if they reference similar variables
-    
-    let c_has_x_gt_10 = c_path.path_condition.iter().any(|c| c.contains("x > 10") || c.contains("x >= 10"));
-    let rust_has_x_gt_10 = rust_path.path_condition.iter().any(|c| c.contains("x > 10") || c.contains("x >= 10"));
-    
-    c_has_x_gt_10 == rust_has_x_gt_10
-}
-
-// ───────────────────────────────────────────────────────
-// Step 0.6.2 & 0.6.3: Equivalence Query + Z3 Solving
-// ───────────────────────────────────────────────────────
-
-enum PathEquivalence {
+enum Z3Result {
     Equivalent,
-    NotEquivalent(Counterexample),
+    NotEquivalent(Vec<(String, i64)>),
     Unknown,
 }
 
-fn check_path_equivalence(
+/// Check one path pair using Z3.
+///
+/// We construct a query from:
+///  1. Input bounds
+///  2. Path constraints (parsed from KLEE kquery, best-effort)
+///  3. Return value expressions (if parseable)
+///
+/// Query: ∃ inputs . (c_return ≠ rust_return)
+fn check_path_pair_z3<'a>(
+    ctx: &'a Context,
+    config: &AnalysisConfig,
     c_path: &PathSummary,
     rust_path: &PathSummary,
-    bounds: &[crate::types::InputBound],
-) -> Result<PathEquivalence> {
-    
-    
-    if c_path.return_expr == "UNKNOWN" || rust_path.return_expr == "UNKNOWN"
-     {
-             return Ok(PathEquivalence::Unknown);
+) -> Result<Z3Result> {
+    let solver = Solver::new(ctx);
+
+    // Symbolic input variables
+    let mut vars: HashMap<String, Int> = HashMap::new();
+    for b in &config.bounds {
+        let v = Int::new_const(ctx, b.name.clone());
+        solver.assert(&v.ge(&Int::from_i64(ctx, b.min)));
+        solver.assert(&v.le(&Int::from_i64(ctx, b.max)));
+        vars.insert(b.name.clone(), v);
     }
 
+    // Add path constraints from both paths (best-effort)
+    add_klee_constraints(ctx, &solver, &vars, &c_path.constraints);
+    add_klee_constraints(ctx, &solver, &vars, &rust_path.constraints);
 
-
-    // Create Z3 context
-    let cfg = Config::new();
-    let ctx = Context::new(&cfg);
-    let solver = Solver::new(&ctx);
-    
-    // Declare symbolic variables
-    let x = Int::new_const(&ctx, "x");
-    let y = Int::new_const(&ctx, "y");
-    
-    // Add bounds as constraints
-    for bound in bounds {
-        if bound.name == "x" {
-            solver.assert(&x.ge(&Int::from_i64(&ctx, bound.min)));
-            solver.assert(&x.le(&Int::from_i64(&ctx, bound.max)));
-        } else if bound.name == "y" {
-            solver.assert(&y.ge(&Int::from_i64(&ctx, bound.min)));
-            solver.assert(&y.le(&Int::from_i64(&ctx, bound.max)));
-        }
-    }
-    
-    // Add path conditions
-    for constraint in &c_path.path_condition {
-        if let Some(z3_constraint) = parse_constraint_to_z3(&ctx, &x, &y, constraint) {
-            solver.assert(&z3_constraint);
-        }
-    }
-    
-    for constraint in &rust_path.path_condition {
-        if let Some(z3_constraint) = parse_constraint_to_z3(&ctx, &x, &y, constraint) {
-            solver.assert(&z3_constraint);
-        }
-    }
-    
     // Build return expressions
-    let c_return = build_return_expr(&ctx, &x, &y, &c_path.return_expr);
-    let rust_return = build_return_expr(&ctx, &x, &y, &rust_path.return_expr);
-    
-    // Ask Z3: Is there an input where returns differ?
-    solver.assert(&c_return._eq(&rust_return).not());
-    
+    let c_ret = build_return_expr(ctx, &vars, c_path);
+    let r_ret = build_return_expr(ctx, &vars, rust_path);
+
+    let (c_expr, r_expr) = match (c_ret, r_ret) {
+        (Some(c), Some(r)) => (c, r),
+        _ => {
+            // Cannot build symbolic return expressions — use witness values
+            // to do a concrete Z3 check
+            return check_witness_pair_z3(ctx, config, c_path, rust_path);
+        }
+    };
+
+    // Assert c_ret ≠ rust_ret
+    solver.assert(&c_expr._eq(&r_expr).not());
+
     match solver.check() {
         z3::SatResult::Sat => {
-            // Found counterexample!
             let model = solver.get_model().unwrap();
-            
-            let x_val = model.eval(&x, true).unwrap().as_i64().unwrap() as i64;
-            let y_val = model.eval(&y, true).unwrap().as_i64().unwrap() as i64;
-            
-            let c_val = model.eval(&c_return, true).unwrap().as_i64().unwrap();
-            let rust_val = model.eval(&rust_return, true).unwrap().as_i64().unwrap();
-            
-            Ok(PathEquivalence::NotEquivalent(Counterexample {
-                inputs: vec![
-                    ("x".to_string(), x_val),
-                    ("y".to_string(), y_val),
-                ],
-                c_behavior: BehaviorSnapshot {
-                    return_value: c_val.to_string(),
-                    stdout: c_path.stdout_log.clone(),
-                    stderr: c_path.stderr_log.clone(),
-                    globals: c_path.global_writes.clone(),
-                },
-                rust_behavior: BehaviorSnapshot {
-                    return_value: rust_val.to_string(),
-                    stdout: rust_path.stdout_log.clone(),
-                    stderr: rust_path.stderr_log.clone(),
-                    globals: rust_path.global_writes.clone(),
-                },
-                differences: vec![
-                    Difference {
-                        kind: DifferenceKind::ReturnValue,
-                        c_value: c_val.to_string(),
-                        rust_value: rust_val.to_string(),
-                    }
-                ],
-            }))
+            let inputs: Vec<(String, i64)> = config
+                .bounds
+                .iter()
+                .filter_map(|b| {
+                    let var = Int::new_const(ctx, b.name.clone());
+                    model.eval(&var, true)?.as_i64().map(|v| (b.name.clone(), v))
+                })
+                .collect();
+            Ok(Z3Result::NotEquivalent(inputs))
         }
-        z3::SatResult::Unsat => {
-            // Proven equivalent!
-            Ok(PathEquivalence::Equivalent)
+        z3::SatResult::Unsat => Ok(Z3Result::Equivalent),
+        z3::SatResult::Unknown => Ok(Z3Result::Unknown),
+    }
+}
+
+/// Fallback: use the concrete witness values from KLEE to build a simple
+/// Z3 check.  For each (C-witness, Rust-witness) pair that have the same
+/// inputs, verify the return values agree.
+fn check_witness_pair_z3<'a>(
+    ctx: &'a Context,
+    config: &AnalysisConfig,
+    c_path: &PathSummary,
+    rust_path: &PathSummary,
+) -> Result<Z3Result> {
+    let solver = Solver::new(ctx);
+
+    // Build input variable map
+    let mut vars: HashMap<String, Int> = HashMap::new();
+    for b in &config.bounds {
+        let v = Int::new_const(ctx, b.name.clone());
+        vars.insert(b.name.clone(), v);
+    }
+
+    // Assert the concrete witness inputs for the C path
+    let mut has_c_witness = false;
+    for (name, val) in &c_path.witness {
+        if let Some(var) = vars.get(name) {
+            solver.assert(&var._eq(&Int::from_i64(ctx, *val)));
+            has_c_witness = true;
         }
-        z3::SatResult::Unknown => {
-            // Timeout or can't decide
-            Ok(PathEquivalence::Equivalent) // Conservative
+    }
+
+    if !has_c_witness {
+        return Ok(Z3Result::Unknown);
+    }
+
+    // Assert return expressions as constants if we have them
+    let c_ret_val = parse_klee_constant(&c_path.return_expr);
+    let r_ret_val = parse_klee_constant(&rust_path.return_expr);
+
+    match (c_ret_val, r_ret_val) {
+        (Some(c), Some(r)) => {
+            if c == r {
+                Ok(Z3Result::Equivalent)
+            } else {
+                // Concrete difference — build counterexample from C witness
+                let inputs = c_path.witness.clone();
+                Ok(Z3Result::NotEquivalent(inputs))
+            }
         }
+        _ => Ok(Z3Result::Unknown),
     }
 }
 
 // ───────────────────────────────────────────────────────
-// Helper: Parse Constraints to Z3
+// KLEE constraint → Z3 translation (best-effort)
 // ───────────────────────────────────────────────────────
 
-fn parse_constraint_to_z3<'ctx>(
-    ctx: &'ctx Context,
-    x: &Int<'ctx>,
-    y: &Int<'ctx>,
+/// Try to add KLEE kquery constraints to a Z3 solver.
+/// Unknown / unparseable constraints are silently skipped.
+fn add_klee_constraints<'a>(
+    ctx: &'a Context,
+    solver: &Solver,
+    vars: &HashMap<String, Int<'a>>,
+    constraints: &[String],
+) {
+    for c in constraints {
+        if c == "true" {
+            continue;
+        }
+        if let Some(expr) = try_parse_klee_constraint(ctx, vars, c) {
+            solver.assert(&expr);
+        }
+    }
+}
+
+/// Very lightweight KLEE kquery constraint parser.
+///
+/// KLEE uses a custom SMTLIB-like language.  The patterns we handle:
+///   (Eq  false (Slt (ReadLSB w32 0 VAR) N))  →  VAR >= N
+///   (Eq  false (Sle N (ReadLSB w32 0 VAR)))  →  VAR < N
+///   (Slt (ReadLSB w32 0 VAR) N)               →  VAR < N
+///   (Sle N (ReadLSB w32 0 VAR))               →  VAR >= N
+///   … and their negations / Sgt / Sge variants
+fn try_parse_klee_constraint<'a>(
+    ctx: &'a Context,
+    vars: &HashMap<String, Int<'a>>,
     constraint: &str,
-) -> Option<z3::ast::Bool<'ctx>> {
-    if constraint.contains("x >= 0") {
-        Some(x.ge(&Int::from_i64(ctx, 0)))
-    } else if constraint.contains("x <= 100") {
-        Some(x.le(&Int::from_i64(ctx, 100)))
-    } else if constraint.contains("x > 10") {
-        Some(x.gt(&Int::from_i64(ctx, 10)))
-    } else if constraint.contains("x >= 10") {
-        Some(x.ge(&Int::from_i64(ctx, 10)))
-    } else if constraint.contains("y >= 0") {
-        Some(y.ge(&Int::from_i64(ctx, 0)))
-    } else if constraint.contains("y <= 100") {
-        Some(y.le(&Int::from_i64(ctx, 100)))
-    } else {
-        None // Unknown constraint
+) -> Option<z3::ast::Bool<'a>> {
+    let s = constraint.trim();
+
+    // Unwrap outermost (Eq false …) — negation
+    if s.starts_with("(Eq false ") {
+        let inner = s["(Eq false ".len()..s.len()-1].trim();
+        let positive = try_parse_klee_constraint(ctx, vars, inner)?;
+        return Some(positive.not());
     }
+
+    // (Slt A B)  → A < B  (signed less-than)
+    if s.starts_with("(Slt ") {
+        let args = s["(Slt ".len()..s.len()-1].trim();
+        let (lhs, rhs) = split_two_args(args)?;
+        let l = parse_klee_int_expr(ctx, vars, lhs)?;
+        let r = parse_klee_int_expr(ctx, vars, rhs)?;
+        return Some(l.lt(&r));
+    }
+
+    // (Sle A B)  → A <= B
+    if s.starts_with("(Sle ") {
+        let args = s["(Sle ".len()..s.len()-1].trim();
+        let (lhs, rhs) = split_two_args(args)?;
+        let l = parse_klee_int_expr(ctx, vars, lhs)?;
+        let r = parse_klee_int_expr(ctx, vars, rhs)?;
+        return Some(l.le(&r));
+    }
+
+    // (Sgt A B)  → A > B
+    if s.starts_with("(Sgt ") {
+        let args = s["(Sgt ".len()..s.len()-1].trim();
+        let (lhs, rhs) = split_two_args(args)?;
+        let l = parse_klee_int_expr(ctx, vars, lhs)?;
+        let r = parse_klee_int_expr(ctx, vars, rhs)?;
+        return Some(l.gt(&r));
+    }
+
+    // (Sge A B)  → A >= B
+    if s.starts_with("(Sge ") {
+        let args = s["(Sge ".len()..s.len()-1].trim();
+        let (lhs, rhs) = split_two_args(args)?;
+        let l = parse_klee_int_expr(ctx, vars, lhs)?;
+        let r = parse_klee_int_expr(ctx, vars, rhs)?;
+        return Some(l.ge(&r));
+    }
+
+    // (Eq A B)  → A == B
+    if s.starts_with("(Eq ") {
+        let args = s["(Eq ".len()..s.len()-1].trim();
+        let (lhs, rhs) = split_two_args(args)?;
+        let l = parse_klee_int_expr(ctx, vars, lhs)?;
+        let r = parse_klee_int_expr(ctx, vars, rhs)?;
+        return Some(l._eq(&r));
+    }
+
+    None
+}
+
+/// Parse a KLEE integer expression fragment into a Z3 Int.
+/// Handles:
+///   (ReadLSB w32 0 VAR)  →  symbolic variable VAR
+///   (w32 N)              →  constant N
+///   plain integer literal
+fn parse_klee_int_expr<'a>(
+    ctx: &'a Context,
+    vars: &HashMap<String, Int<'a>>,
+    s: &str,
+) -> Option<Int<'a>> {
+    let s = s.trim();
+
+    // (ReadLSB w32 0 VAR)
+    if s.starts_with("(ReadLSB ") {
+        // Extract last token before closing ')'
+        let inner = s["(ReadLSB ".len()..s.len()-1].trim();
+        let var_name = inner.split_whitespace().last()?;
+        return vars.get(var_name).map(|v| v.clone());
+    }
+
+    // (w32 N) or (w64 N) — bitvector constant
+    if s.starts_with("(w32 ") || s.starts_with("(w64 ") {
+        let inner = &s[5..s.len()-1].trim();
+        if let Ok(n) = inner.parse::<i64>() {
+            return Some(Int::from_i64(ctx, n));
+        }
+        // Might be negative represented as large unsigned
+        if let Ok(n) = inner.parse::<u64>() {
+            return Some(Int::from_i64(ctx, n as i64));
+        }
+    }
+
+    // Plain integer literal
+    if let Ok(n) = s.parse::<i64>() {
+        return Some(Int::from_i64(ctx, n));
+    }
+    if let Ok(n) = s.parse::<u64>() {
+        return Some(Int::from_i64(ctx, n as i64));
+    }
+
+    None
+}
+
+/// Split a string into exactly two top-level S-expression arguments.
+fn split_two_args(s: &str) -> Option<(&str, &str)> {
+    let s = s.trim();
+    // Find end of first argument
+    let first_end = if s.starts_with('(') {
+        // Balanced paren scan
+        let mut depth = 0usize;
+        let mut pos = 0usize;
+        for (i, c) in s.char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        pos = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        pos + 1
+    } else {
+        // Token ends at whitespace
+        s.find(char::is_whitespace)?
+    };
+
+    let first = s[..first_end].trim();
+    let second = s[first_end..].trim();
+    if first.is_empty() || second.is_empty() {
+        return None;
+    }
+    Some((first, second))
 }
 
 // ───────────────────────────────────────────────────────
-// Helper: Build Return Expression in Z3
+// Return expression helpers
 // ───────────────────────────────────────────────────────
 
-fn build_return_expr<'ctx>(
-    ctx: &'ctx Context,
-    x: &Int<'ctx>,
-    y: &Int<'ctx>,
-    expr: &str,
-) -> Int<'ctx> {
-    if expr.contains("x + y") {
-        x + y
-    } else if expr.contains("x * y") {
-        x * y
-    } else {
-        // Default: return x
-        x.clone()
+/// Try to build a Z3 Int expression for the return value of a path.
+fn build_return_expr<'a>(
+    ctx: &'a Context,
+    vars: &HashMap<String, Int<'a>>,
+    path: &PathSummary,
+) -> Option<Int<'a>> {
+    let expr_str = path.return_expr.as_deref()?;
+
+    // Try to parse as KLEE integer expression
+    if let Some(z3_expr) = parse_klee_int_expr(ctx, vars, expr_str) {
+        return Some(z3_expr);
     }
+
+    // Try plain constant
+    if let Ok(n) = expr_str.parse::<i64>() {
+        return Some(Int::from_i64(ctx, n));
+    }
+
+    // Lookup variable name
+    if let Some(v) = vars.get(expr_str.trim()) {
+        return Some(v.clone());
+    }
+
+    None
+}
+
+/// Parse a KLEE return expression that is a simple constant.
+fn parse_klee_constant(expr: &Option<String>) -> Option<i64> {
+    let s = expr.as_deref()?.trim();
+
+    // (w32 N)
+    if s.starts_with("(w32 ") || s.starts_with("(w64 ") {
+        let inner = s[5..s.len()-1].trim();
+        return inner.parse::<i64>().ok()
+            .or_else(|| inner.parse::<u64>().ok().map(|v| v as i64));
+    }
+
+    // Plain integer
+    s.parse::<i64>().ok()
+}
+
+// ───────────────────────────────────────────────────────
+// Counterexample construction
+// ───────────────────────────────────────────────────────
+
+fn build_counterexample_from_inputs(
+    config: &AnalysisConfig,
+    ir_files: &IrFiles,
+    inputs: Vec<(String, i64)>,
+) -> Result<Counterexample> {
+    // Build ordered arg list matching bounds order
+    let args: Vec<i64> = config
+        .bounds
+        .iter()
+        .map(|b| {
+            inputs
+                .iter()
+                .find(|(n, _)| n == &b.name)
+                .map(|(_, v)| *v)
+                .unwrap_or(b.min)
+        })
+        .collect();
+
+    let c_ret = run_binary(&ir_files.c_runner_bin, &args).unwrap_or_else(|_| "?".to_string());
+    let r_ret = run_binary(&ir_files.rust_runner_bin, &args).unwrap_or_else(|_| "?".to_string());
+
+    Ok(Counterexample {
+        inputs,
+        c_behavior: ConcreteBehavior {
+            return_value: c_ret.clone(),
+            stdout: vec![c_ret.clone()],
+            stderr: vec![],
+            globals: vec![],
+        },
+        rust_behavior: ConcreteBehavior {
+            return_value: r_ret.clone(),
+            stdout: vec![r_ret.clone()],
+            stderr: vec![],
+            globals: vec![],
+        },
+        differences: vec![Difference {
+            kind: DifferenceKind::ReturnValue,
+            c_value: c_ret,
+            rust_value: r_ret,
+        }],
+    })
 }

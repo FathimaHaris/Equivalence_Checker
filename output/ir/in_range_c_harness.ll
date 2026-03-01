@@ -11,25 +11,30 @@ define dso_local i32 @in_range(i32 noundef %0) #0 {
   %3 = alloca i32, align 4
   store i32 %0, ptr %3, align 4
   %4 = load i32, ptr %3, align 4
-  %5 = icmp sge i32 %4, 0
-  br i1 %5, label %6, label %10
+  %5 = icmp slt i32 %4, 0
+  br i1 %5, label %6, label %7
 
 6:                                                ; preds = %1
-  %7 = load i32, ptr %3, align 4
-  %8 = icmp sle i32 %7, 10
-  br i1 %8, label %9, label %10
+  store i32 -1, ptr %2, align 4
+  br label %13
 
-9:                                                ; preds = %6
+7:                                                ; preds = %1
+  %8 = load i32, ptr %3, align 4
+  %9 = icmp sle i32 %8, 10
+  br i1 %9, label %10, label %11
+
+10:                                               ; preds = %7
   store i32 1, ptr %2, align 4
-  br label %11
+  br label %13
 
-10:                                               ; preds = %6, %1
-  store i32 0, ptr %2, align 4
-  br label %11
+11:                                               ; preds = %7
+  %12 = load i32, ptr %3, align 4
+  store i32 %12, ptr %2, align 4
+  br label %13
 
-11:                                               ; preds = %10, %9
-  %12 = load i32, ptr %2, align 4
-  ret i32 %12
+13:                                               ; preds = %11, %10, %6
+  %14 = load i32, ptr %2, align 4
+  ret i32 %14
 }
 
 ; Function Attrs: noinline nounwind uwtable

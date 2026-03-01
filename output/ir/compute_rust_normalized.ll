@@ -23,7 +23,7 @@ start:
   call void @klee_make_symbolic(ptr %x, i64 4, ptr @alloc_c9c957c0c8511304e1f0e63463442336)
   call void @klee_make_symbolic(ptr %y, i64 4, ptr @alloc_95bd63817c298ea3373cf06db93d3c57)
   %_23 = load i32, ptr %x, align 4, !noundef !2
-  %_22 = icmp sge i32 %_23, 0
+  %_22 = icmp sge i32 %_23, -5
   br i1 %_22, label %bb8, label %bb7
 
 bb7:                                              ; preds = %start
@@ -31,7 +31,7 @@ bb7:                                              ; preds = %start
 
 bb8:                                              ; preds = %start
   %_25 = load i32, ptr %x, align 4, !noundef !2
-  %_24 = icmp sle i32 %_25, 100
+  %_24 = icmp sle i32 %_25, 15
   %0 = zext i1 %_24 to i8
   br label %bb9
 
@@ -41,7 +41,7 @@ bb9:                                              ; preds = %bb8, %bb7
   %_20 = zext i1 %1 to i32
   call void @klee_assume(i32 %_20)
   %_30 = load i32, ptr %y, align 4, !noundef !2
-  %_29 = icmp sge i32 %_30, 0
+  %_29 = icmp sge i32 %_30, -5
   br i1 %_29, label %bb12, label %bb11
 
 bb11:                                             ; preds = %bb9
@@ -49,7 +49,7 @@ bb11:                                             ; preds = %bb9
 
 bb12:                                             ; preds = %bb9
   %_32 = load i32, ptr %y, align 4, !noundef !2
-  %_31 = icmp sle i32 %_32, 100
+  %_31 = icmp sle i32 %_32, 15
   %2 = zext i1 %_31 to i8
   br label %bb13
 

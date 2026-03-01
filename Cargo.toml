@@ -37,7 +37,7 @@ quote = "1"
 proc-macro2 = "1"
 
 
-
+regex = "1.0"
 rand = "0.8"
 
 [dev-dependencies]

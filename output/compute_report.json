@@ -1,25 +1,25 @@
 {
   "verdict": "NotEquivalent",
-  "paths_compared": 2,
+  "paths_compared": 1,
   "counterexample": {
     "inputs": [
       [
         "x",
-        0
+        -5
       ],
       [
         "y",
-        15
+        -5
       ]
     ],
     "c_behavior": {
-      "return_value": "0",
+      "return_value": "25",
       "stdout": [],
       "stderr": [],
       "globals": []
     },
     "rust_behavior": {
-      "return_value": "15",
+      "return_value": "-10",
       "stdout": [],
       "stderr": [],
       "globals": []
@@ -27,73 +27,17 @@
     "differences": [
       {
         "kind": "ReturnValue",
-        "c_value": "0",
-        "rust_value": "15"
+        "c_value": "see above",
+        "rust_value": "see above"
       }
     ]
   },
-  "time_taken": 0.00489828,
-  "test_cases": [
-    {
-      "inputs": [
-        [
-          "x",
-          0
-        ],
-        [
-          "y",
-          0
-        ]
-      ],
-      "c_behavior": {
-        "return_value": "0",
-        "stdout": [],
-        "stderr": [],
-        "globals": []
-      },
-      "rust_behavior": {
-        "return_value": "0",
-        "stdout": [],
-        "stderr": [],
-        "globals": []
-      },
-      "differences": []
-    },
-    {
-      "inputs": [
-        [
-          "x",
-          0
-        ],
-        [
-          "y",
-          15
-        ]
-      ],
-      "c_behavior": {
-        "return_value": "0",
-        "stdout": [],
-        "stderr": [],
-        "globals": []
-      },
-      "rust_behavior": {
-        "return_value": "15",
-        "stdout": [],
-        "stderr": [],
-        "globals": []
-      },
-      "differences": [
-        {
-          "kind": "ReturnValue",
-          "c_value": "0",
-          "rust_value": "15"
-        }
-      ]
-    }
-  ],
-  "stats": {
-    "total_tests": 2,
-    "equivalent_tests": 1,
-    "non_equivalent_tests": 1
+  "time_taken": 0.003429324,
+  "statistics": {
+    "total_paths_c": 1,
+    "total_paths_rust": 1,
+    "merged_pairs": 1,
+    "z3_queries": 0,
+    "z3_time_ms": 0
   }
 }

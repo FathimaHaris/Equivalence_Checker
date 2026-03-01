@@ -4,7 +4,7 @@
 // Creates human-readable reports of verification results
 // ═══════════════════════════════════════════════════════
 
-use crate::types::{AnalysisConfig, EquivalenceResult, Verdict,TestCaseResult};
+use crate::types::{AnalysisConfig, EquivalenceResult, Verdict};
 use anyhow::Result;
 use std::fs;
 
@@ -192,9 +192,9 @@ fn generate_html_report(config: &AnalysisConfig, result: &EquivalenceResult) -> 
         result.time_taken,
         // generate_counterexample_html(result)
         format!(
-        "{}{}{}",
-        generate_test_table_html(&result.test_cases),
-        generate_observables_html(&result.test_cases),
+        "{}",
+        // generate_test_table_html(&result.test_cases),
+        // generate_observables_html(&result.test_cases),
         generate_counterexample_html(result)
     )
 
@@ -224,53 +224,53 @@ fn generate_counterexample_html(result: &EquivalenceResult) -> String {
 
 
 
-fn generate_test_table_html(test_cases: &[TestCaseResult]) -> String {
-    if test_cases.is_empty() {
-        return String::new();
-    }
+// fn generate_test_table_html(test_cases: &[TestCaseResult]) -> String {
+//     if test_cases.is_empty() {
+//         return String::new();
+//     }
 
-    let rows: Vec<String> = test_cases.iter().map(|tc| {
-        let x = tc.inputs.iter().find(|(k,_)| k == "x").map(|(_,v)| *v).unwrap_or(0);
-        let y = tc.inputs.iter().find(|(k,_)| k == "y").map(|(_,v)| *v).unwrap_or(0);
+//     let rows: Vec<String> = test_cases.iter().map(|tc| {
+//         let x = tc.inputs.iter().find(|(k,_)| k == "x").map(|(_,v)| *v).unwrap_or(0);
+//         let y = tc.inputs.iter().find(|(k,_)| k == "y").map(|(_,v)| *v).unwrap_or(0);
 
-        let c_ret = &tc.c_behavior.return_value;
-        let r_ret = &tc.rust_behavior.return_value;
+//         let c_ret = &tc.c_behavior.return_value;
+//         let r_ret = &tc.rust_behavior.return_value;
 
-        let ok = tc.differences.is_empty();
-        let status = if ok { "✓" } else { "✗" };
+//         let ok = tc.differences.is_empty();
+//         let status = if ok { "✓" } else { "✗" };
 
-        // highlight failing row
-        let row_style = if ok { "" } else { "style=\"background:#fef2f2;\"" };
+//         // highlight failing row
+//         let row_style = if ok { "" } else { "style=\"background:#fef2f2;\"" };
 
-        format!(
-            "<tr {row_style}><td>({x},{y})</td><td><code>{}</code></td><td><code>{}</code></td><td style=\"font-weight:700\">{}</td></tr>",
-            html_escape(c_ret),
-            html_escape(r_ret),
-            status,
-            // result.time_taken,
+//         format!(
+//             "<tr {row_style}><td>({x},{y})</td><td><code>{}</code></td><td><code>{}</code></td><td style=\"font-weight:700\">{}</td></tr>",
+//             html_escape(c_ret),
+//             html_escape(r_ret),
+//             status,
+//             // result.time_taken,
             
-        )
-    }).collect();
+//         )
+//     }).collect();
 
-    format!(r#"
-    <div style="margin-top:30px;">
-      <h3 style="margin-bottom:10px;">Test Case Results</h3>
-      <table style="width:100%; border-collapse: collapse; font-size:14px;">
-        <thead>
-          <tr style="background:#f3f4f6;">
-            <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">Input</th>
-            <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">C Return</th>
-            <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">Rust Return</th>
-            <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {}
-        </tbody>
-      </table>
-    </div>
-    "#, rows.join("\n"))
-}
+//     format!(r#"
+//     <div style="margin-top:30px;">
+//       <h3 style="margin-bottom:10px;">Test Case Results</h3>
+//       <table style="width:100%; border-collapse: collapse; font-size:14px;">
+//         <thead>
+//           <tr style="background:#f3f4f6;">
+//             <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">Input</th>
+//             <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">C Return</th>
+//             <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">Rust Return</th>
+//             <th style="text-align:left; padding:10px; border:1px solid #e5e7eb;">Status</th>
+//           </tr>
+//         </thead>
+//         <tbody>
+//           {}
+//         </tbody>
+//       </table>
+//     </div>
+//     "#, rows.join("\n"))
+// }
 
 /// very small safe escape (good enough for your strings)
 fn html_escape(s: &str) -> String {
@@ -278,77 +278,77 @@ fn html_escape(s: &str) -> String {
 }
 
 
-fn generate_observables_html(test_cases: &[TestCaseResult]) -> String {
-    if test_cases.is_empty() {
-        return String::new();
-    }
+// fn generate_observables_html(test_cases: &[TestCaseResult]) -> String {
+//     if test_cases.is_empty() {
+//         return String::new();
+//     }
 
-    let blocks: Vec<String> = test_cases.iter().map(|tc| {
-        let input_str = tc.inputs.iter()
-            .map(|(k,v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(", ");
+//     let blocks: Vec<String> = test_cases.iter().map(|tc| {
+//         let input_str = tc.inputs.iter()
+//             .map(|(k,v)| format!("{k}={v}"))
+//             .collect::<Vec<_>>()
+//             .join(", ");
 
-        let c_stdout = tc.c_behavior.stdout.join("\\n");
-        let r_stdout = tc.rust_behavior.stdout.join("\\n");
+//         let c_stdout = tc.c_behavior.stdout.join("\\n");
+//         let r_stdout = tc.rust_behavior.stdout.join("\\n");
 
-        let c_globals = tc.c_behavior.globals.iter()
-            .map(|(k,v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(", ");
+//         let c_globals = tc.c_behavior.globals.iter()
+//             .map(|(k,v)| format!("{k}={v}"))
+//             .collect::<Vec<_>>()
+//             .join(", ");
 
-        let r_globals = tc.rust_behavior.globals.iter()
-            .map(|(k,v)| format!("{k}={v}"))
-            .collect::<Vec<_>>()
-            .join(", ");
+//         let r_globals = tc.rust_behavior.globals.iter()
+//             .map(|(k,v)| format!("{k}={v}"))
+//             .collect::<Vec<_>>()
+//             .join(", ");
 
-        let diff_text = if tc.differences.is_empty() {
-            "EQUIVALENT ✓".to_string()
-        } else {
-            let d = tc.differences.iter().map(|d| {
-                format!("{:?}: C={} vs Rust={}", d.kind, d.c_value, d.rust_value)
-            }).collect::<Vec<_>>().join(" | ");
-            format!("NOT EQUIVALENT ✗ — {d}")
-        };
+//         let diff_text = if tc.differences.is_empty() {
+//             "EQUIVALENT ✓".to_string()
+//         } else {
+//             let d = tc.differences.iter().map(|d| {
+//                 format!("{:?}: C={} vs Rust={}", d.kind, d.c_value, d.rust_value)
+//             }).collect::<Vec<_>>().join(" | ");
+//             format!("NOT EQUIVALENT ✗ — {d}")
+//         };
 
-        format!(r#"
-        <div style="margin-top:16px; padding:16px; border:1px solid #e5e7eb; border-radius:8px;">
-          <div style="font-weight:700; margin-bottom:8px;">Input: <code>{}</code></div>
+//         format!(r#"
+//         <div style="margin-top:16px; padding:16px; border:1px solid #e5e7eb; border-radius:8px;">
+//           <div style="font-weight:700; margin-bottom:8px;">Input: <code>{}</code></div>
 
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <div style="background:#f9fafb; padding:12px; border-radius:8px;">
-              <div style="font-weight:700; margin-bottom:6px;">C Program</div>
-              <div>Return: <code>{}</code></div>
-              <div>stdout: <code>{}</code></div>
-              <div>globals: <code>{}</code></div>
-            </div>
+//           <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+//             <div style="background:#f9fafb; padding:12px; border-radius:8px;">
+//               <div style="font-weight:700; margin-bottom:6px;">C Program</div>
+//               <div>Return: <code>{}</code></div>
+//               <div>stdout: <code>{}</code></div>
+//               <div>globals: <code>{}</code></div>
+//             </div>
 
-            <div style="background:#f9fafb; padding:12px; border-radius:8px;">
-              <div style="font-weight:700; margin-bottom:6px;">Rust Program</div>
-              <div>Return: <code>{}</code></div>
-              <div>stdout: <code>{}</code></div>
-              <div>globals: <code>{}</code></div>
-            </div>
-          </div>
+//             <div style="background:#f9fafb; padding:12px; border-radius:8px;">
+//               <div style="font-weight:700; margin-bottom:6px;">Rust Program</div>
+//               <div>Return: <code>{}</code></div>
+//               <div>stdout: <code>{}</code></div>
+//               <div>globals: <code>{}</code></div>
+//             </div>
+//           </div>
 
-          <div style="margin-top:10px; font-weight:700;">{}</div>
-        </div>
-        "#,
-        html_escape(&input_str),
-        html_escape(&tc.c_behavior.return_value),
-        html_escape(&c_stdout),
-        html_escape(&c_globals),
-        html_escape(&tc.rust_behavior.return_value),
-        html_escape(&r_stdout),
-        html_escape(&r_globals),
-        html_escape(&diff_text),
-        )
-    }).collect();
+//           <div style="margin-top:10px; font-weight:700;">{}</div>
+//         </div>
+//         "#,
+//         html_escape(&input_str),
+//         html_escape(&tc.c_behavior.return_value),
+//         html_escape(&c_stdout),
+//         html_escape(&c_globals),
+//         html_escape(&tc.rust_behavior.return_value),
+//         html_escape(&r_stdout),
+//         html_escape(&r_globals),
+//         html_escape(&diff_text),
+//         )
+//     }).collect();
 
-    format!(r#"
-      <div style="margin-top:30px;">
-        <h3 style="margin-bottom:10px;">Step 6.3 — Collected Observables</h3>
-        {}
-      </div>
-    "#, blocks.join("\n"))
-}
+//     format!(r#"
+//       <div style="margin-top:30px;">
+//         <h3 style="margin-bottom:10px;">Step 6.3 — Collected Observables</h3>
+//         {}
+//       </div>
+//     "#, blocks.join("\n"))
+// }

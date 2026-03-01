@@ -8,31 +8,25 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: nonlazybind uwtable
 define internal i32 @_ZN21in_range_rust_harness8in_range17he535fbb57ba189ddE(i32 %x) unnamed_addr #0 {
 start:
-  %_3 = icmp sgt i32 %x, 0
-  br i1 %_3, label %bb2, label %bb1
-
-bb1:                                              ; preds = %start
-  br label %bb3
+  %_2 = icmp slt i32 %x, 0
+  br i1 %_2, label %bb1, label %bb2
 
 bb2:                                              ; preds = %start
-  %_4 = icmp sle i32 %x, 10
-  %0 = zext i1 %_4 to i8
-  br label %bb3
+  %_3 = icmp slt i32 %x, 10
+  br i1 %_3, label %bb3, label %bb4
 
-bb3:                                              ; preds = %bb2, %bb1
-  %_2.0 = phi i8 [ %0, %bb2 ], [ 0, %bb1 ]
-  %1 = trunc i8 %_2.0 to i1
-  br i1 %1, label %bb4, label %bb5
+bb1:                                              ; preds = %start
+  br label %bb5
 
-bb5:                                              ; preds = %bb3
-  br label %bb6
-
-bb4:                                              ; preds = %bb3
-  br label %bb6
-
-bb6:                                              ; preds = %bb4, %bb5
-  %.0 = phi i32 [ 1, %bb4 ], [ 0, %bb5 ]
+bb5:                                              ; preds = %bb3, %bb4, %bb1
+  %.0 = phi i32 [ -1, %bb1 ], [ 1, %bb3 ], [ 2, %bb4 ]
   ret i32 %.0
+
+bb4:                                              ; preds = %bb2
+  br label %bb5
+
+bb3:                                              ; preds = %bb2
+  br label %bb5
 }
 
 ; Function Attrs: nonlazybind uwtable

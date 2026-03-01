@@ -5,7 +5,6 @@
 
 use serde::{Deserialize, Serialize};
 
-
 // ───────────────────────────────────────────────────────
 // INPUT TYPES
 // ───────────────────────────────────────────────────────
@@ -15,19 +14,14 @@ use serde::{Deserialize, Serialize};
 pub struct AnalysisConfig {
     /// Path to C source file
     pub c_file: String,
-
     /// Path to Rust source file  
     pub rust_file: String,
-
     /// Name of function to check
     pub function_name: String,
-
     /// Input bounds for symbolic execution
     pub bounds: Vec<InputBound>,
-
     /// Maximum paths KLEE should explore
     pub max_paths: u32,
-
     /// Maximum time in seconds
     pub timeout: u32,
 }
@@ -35,13 +29,8 @@ pub struct AnalysisConfig {
 /// Bound for one input variable
 #[derive(Debug, Clone)]
 pub struct InputBound {
-    /// Variable name e.g. "x"
     pub name: String,
-
-    /// Minimum value e.g. 0
     pub min: i64,
-
-    /// Maximum value e.g. 100
     pub max: i64,
 }
 
@@ -49,23 +38,14 @@ pub struct InputBound {
 // VALIDATION TYPES
 // ───────────────────────────────────────────────────────
 
-/// Result of validating input files
 #[derive(Debug, Clone)]
 pub struct ValidationResult {
-    /// Did validation pass?
     pub success: bool,
-
-    /// C function signature found
     pub c_signature: Option<FunctionSignature>,
-
-    /// Rust function signature found
     pub rust_signature: Option<FunctionSignature>,
-
-    /// Any errors found
     pub errors: Vec<String>,
 }
 
-/// A function's signature
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
     pub name: String,
@@ -74,168 +54,95 @@ pub struct FunctionSignature {
 }
 
 // ───────────────────────────────────────────────────────
-// PATH SUMMARY TYPES (output of KLEE symbolic execution)
+// PATH SUMMARY TYPES (from KLEE)
 // ───────────────────────────────────────────────────────
 
 /// Complete symbolic path summary for ONE execution path
-/// This is what KLEE produces for each path it explores
+/// This matches your DFD2_symbolic.jpg - output of step 0.5.4
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathSummary {
-    /// Unique ID for this path e.g. "C-1", "R-2"
+    /// Unique ID for this path
     pub id: String,
-
     /// Which program: C or Rust
     pub program: ProgramKind,
-
-    /// The path condition (constraints that led here)
-    /// e.g. ["x > 10", "y >= 0"]
-    pub path_condition: Vec<String>,
-
-    /// The return expression (symbolic)
-    /// e.g. "x + y"
-    pub return_expr: String,
-
-    /// Stdout strings logged by instrumentation hooks
-    /// e.g. ["Hello\n", "Done\n"]
-    pub stdout_log: Vec<String>,
-
-    /// Stderr strings logged
-    pub stderr_log: Vec<String>,
-
-    /// Global variable writes logged
-    /// e.g. [("counter", "counter_0 + 1")]
-    pub global_writes: Vec<(String, String)>,
-
-    /// File operations logged
-    pub file_ops: Vec<FileOperation>,
-
+    /// Path constraints in SMT-LIB format (from KLEE .kquery)
+    pub constraints: Vec<String>,
+    /// Return expression in SMT-LIB format
+    pub return_expr: Option<String>,
+    /// Concrete witness values from KLEE
     pub witness: Vec<(String, i64)>,
+    /// Observable effects (stdout, stderr, globals)
+    pub observables: ObservableEffects,
 }
 
-/// Which program a path belongs to
+/// Observable effects captured during instrumentation
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ObservableEffects {
+    pub stdout: Vec<String>,
+    pub stderr: Vec<String>,
+    pub global_writes: Vec<(String, String)>,
+    pub file_ops: Vec<FileOperation>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileOperation {
+    pub op_type: String,
+    pub filename: String,
+    pub data: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ProgramKind {
     C,
     Rust,
 }
 
-/// A file operation that was logged
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FileOperation {
-    pub op_type: String,   // "open", "write", "close"
-    pub filename: String,
-    pub data: Option<String>,
-}
-
 // ───────────────────────────────────────────────────────
-// EQUIVALENCE RESULT TYPES (output of Z3)
+// EQUIVALENCE CHECKER TYPES (for Z3)
 // ───────────────────────────────────────────────────────
 
-/// One concrete input test case and both programs' behaviors on it
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestCaseResult {
-    /// Concrete input values e.g. [("x", 10), ("y", 5)]
-    pub inputs: Vec<(String, i64)>,
-
-    pub c_behavior: BehaviorSnapshot,
-    pub rust_behavior: BehaviorSnapshot,
-
-    /// Differences found for this test (empty = equivalent for this input)
-    pub differences: Vec<Difference>,
-}
-
-/// Optional: summary counts (nice for report)
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct ComparisonStats {
-    pub total_tests: u32,
-    pub equivalent_tests: u32,
-    pub non_equivalent_tests: u32,
-}
-
-
-
-
-
-
-
-
-
-/// Final verdict from Z3
+/// Result of equivalence checking (matches your DFD)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EquivalenceResult {
-    /// Overall verdict
     pub verdict: Verdict,
-
-    /// Paths that were compared
     pub paths_compared: u32,
-
-    /// If not equivalent: the counterexample
     pub counterexample: Option<Counterexample>,
-
-    /// Time taken in seconds
     pub time_taken: f64,
-
-
-    /// NEW: all observed behaviors (Step 6.3)
-    pub test_cases: Vec<TestCaseResult>,
-
-    /// NEW: report-friendly stats
-    pub stats: ComparisonStats,
+    pub statistics: CheckerStatistics,
 }
 
-/// The verdict
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Verdict {
-    /// Z3 proved UNSAT — programs are equivalent
-    Equivalent,
-
-    /// Z3 found SAT — programs differ
-    NotEquivalent,
-
-    /// Z3 could not decide within timeout
-    Unknown,
+    Equivalent,      // UNSAT - programs are equivalent
+    NotEquivalent,   // SAT - found counterexample
+    Unknown,         // Z3 could not decide
 }
 
-/// A concrete counterexample found by Z3
+/// Counterexample found by Z3 (SAT result)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Counterexample {
-    /// The concrete input values
-    /// e.g. [("x", 10), ("y", 5)]
     pub inputs: Vec<(String, i64)>,
-
-    /// What C program does with these inputs
-    pub c_behavior: BehaviorSnapshot,
-
-    /// What Rust program does with these inputs
-    pub rust_behavior: BehaviorSnapshot,
-
-    /// What specifically differs
+    pub c_behavior: ConcreteBehavior,
+    pub rust_behavior: ConcreteBehavior,
     pub differences: Vec<Difference>,
 }
 
-/// What a program does for specific inputs
+/// Concrete program behavior for specific inputs
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BehaviorSnapshot {
+pub struct ConcreteBehavior {
     pub return_value: String,
     pub stdout: Vec<String>,
     pub stderr: Vec<String>,
     pub globals: Vec<(String, String)>,
 }
 
-/// One specific difference found
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Difference {
-    /// What kind of difference
     pub kind: DifferenceKind,
-
-    /// C value
     pub c_value: String,
-
-    /// Rust value
     pub rust_value: String,
 }
 
-/// Kind of difference
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DifferenceKind {
     ReturnValue,
@@ -245,31 +152,36 @@ pub enum DifferenceKind {
     FileOperation,
 }
 
+/// Statistics from the checker
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct CheckerStatistics {
+    pub total_paths_c: usize,
+    pub total_paths_rust: usize,
+    pub merged_pairs: usize,
+    pub z3_queries: u32,
+    pub z3_time_ms: u64,
+}
+
 // ───────────────────────────────────────────────────────
 // ERROR TYPES
 // ───────────────────────────────────────────────────────
 
-/// All possible errors in our tool
 #[derive(Debug, thiserror::Error)]
 pub enum CheckerError {
     #[error("Validation failed: {0}")]
     ValidationError(String),
-
     #[error("Compilation failed: {0}")]
     CompilationError(String),
-
     #[error("Normalization failed: {0}")]
     NormalizationError(String),
-
     #[error("Instrumentation failed: {0}")]
     InstrumentationError(String),
-
     #[error("Symbolic execution failed: {0}")]
     SymbolicExecutionError(String),
-
     #[error("Equivalence checking failed: {0}")]
     EquivalenceError(String),
-
+    #[error("Z3 solver error: {0}")]
+    Z3Error(String),
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
 }

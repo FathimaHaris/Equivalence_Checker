@@ -9,37 +9,29 @@ target triple = "x86_64-unknown-linux-gnu"
 ; Function Attrs: nonlazybind uwtable
 define internal i32 @_ZN21in_range_rust_harness8in_range17he535fbb57ba189ddE(i32 %x) unnamed_addr #0 {
 start:
-  %_2 = alloca i8, align 1
   %0 = alloca i32, align 4
-  %_3 = icmp sgt i32 %x, 0
-  br i1 %_3, label %bb2, label %bb1
-
-bb1:                                              ; preds = %start
-  store i8 0, ptr %_2, align 1
-  br label %bb3
+  %_2 = icmp slt i32 %x, 0
+  br i1 %_2, label %bb1, label %bb2
 
 bb2:                                              ; preds = %start
-  %_4 = icmp sle i32 %x, 10
-  %1 = zext i1 %_4 to i8
-  store i8 %1, ptr %_2, align 1
-  br label %bb3
+  %_3 = icmp slt i32 %x, 10
+  br i1 %_3, label %bb3, label %bb4
 
-bb3:                                              ; preds = %bb1, %bb2
-  %2 = load i8, ptr %_2, align 1, !range !2, !noundef !3
-  %3 = trunc i8 %2 to i1
-  br i1 %3, label %bb4, label %bb5
+bb1:                                              ; preds = %start
+  store i32 -1, ptr %0, align 4
+  br label %bb5
 
-bb5:                                              ; preds = %bb3
-  store i32 0, ptr %0, align 4
-  br label %bb6
+bb5:                                              ; preds = %bb4, %bb3, %bb1
+  %1 = load i32, ptr %0, align 4, !noundef !2
+  ret i32 %1
 
-bb4:                                              ; preds = %bb3
+bb4:                                              ; preds = %bb2
+  store i32 2, ptr %0, align 4
+  br label %bb5
+
+bb3:                                              ; preds = %bb2
   store i32 1, ptr %0, align 4
-  br label %bb6
-
-bb6:                                              ; preds = %bb5, %bb4
-  %4 = load i32, ptr %0, align 4, !noundef !3
-  ret i32 %4
+  br label %bb5
 }
 
 ; Function Attrs: nonlazybind uwtable
@@ -49,7 +41,7 @@ start:
   %x = alloca i32, align 4
   store i32 0, ptr %x, align 4
   call void @klee_make_symbolic(ptr %x, i64 4, ptr @alloc_c9c957c0c8511304e1f0e63463442336)
-  %_14 = load i32, ptr %x, align 4, !noundef !3
+  %_14 = load i32, ptr %x, align 4, !noundef !2
   %_13 = icmp sge i32 %_14, -5
   br i1 %_13, label %bb5, label %bb4
 
@@ -58,18 +50,18 @@ bb4:                                              ; preds = %start
   br label %bb6
 
 bb5:                                              ; preds = %start
-  %_16 = load i32, ptr %x, align 4, !noundef !3
+  %_16 = load i32, ptr %x, align 4, !noundef !2
   %_15 = icmp sle i32 %_16, 15
   %0 = zext i1 %_15 to i8
   store i8 %0, ptr %_12, align 1
   br label %bb6
 
 bb6:                                              ; preds = %bb4, %bb5
-  %1 = load i8, ptr %_12, align 1, !range !2, !noundef !3
+  %1 = load i8, ptr %_12, align 1, !range !3, !noundef !2
   %2 = trunc i8 %1 to i1
   %_11 = zext i1 %2 to i32
   call void @klee_assume(i32 %_11)
-  %_17 = load i32, ptr %x, align 4, !noundef !3
+  %_17 = load i32, ptr %x, align 4, !noundef !2
 ; call in_range_rust_harness::in_range
   %3 = call i32 @_ZN21in_range_rust_harness8in_range17he535fbb57ba189ddE(i32 %_17)
   ret i32 %3
@@ -87,5 +79,5 @@ attributes #0 = { nonlazybind uwtable "probe-stack"="__rust_probestack" "target-
 
 !0 = !{i32 7, !"PIC Level", i32 2}
 !1 = !{i32 2, !"RtLibUseGOT", i32 1}
-!2 = !{i8 0, i8 2}
-!3 = !{}
+!2 = !{}
+!3 = !{i8 0, i8 2}
