@@ -947,8 +947,7 @@ function finishRun() {
 function showResultFromMsg(msg, fn_name) {
   if (msg.equivalent) {
     showResult(true, fn_name, null, null, null,
-      null, null, null,
-      msg.paths_c, msg.paths_rust, msg.inputs_tested, msg.time_taken);
+      msg.paths_c, msg.paths_rust, msg.inputs_tested, msg.time_taken, null);
   } else {
     const ce = msg.counterexample;
     const inputStr = ce ? ce.inputs.map(([k,v]) => `${k}=${v}`).join(', ') : '?';
@@ -956,11 +955,10 @@ function showResultFromMsg(msg, fn_name) {
       inputStr,
       ce ? ce.c_return : '?',
       ce ? ce.r_return : '?',
-      null, null, null,
-      msg.paths_c, msg.paths_rust, msg.inputs_tested, msg.time_taken);
+      msg.paths_c, msg.paths_rust, msg.inputs_tested, msg.time_taken,
+      msg.diff || null);
   }
 }
-
 // ── Helpers ───────────────────────────────────────────
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
@@ -993,38 +991,119 @@ function parseRange(bounds) {
 }
 
 function showResult(equivalent, fn_name, ceInput, cRet, rRet,
-                    _b, _t, _p, pathsC, pathsRust, inputsTested, timeTaken) {
+                    pathsC, pathsRust, inputsTested, timeTaken, diff) {
   const area = document.getElementById('result-area');
   const time = timeTaken != null ? timeTaken.toFixed(2) + 's' : '—';
+
+  // Path note
+  const extraPaths = diff ? diff.extra_rust_paths : 0;
+  const pathNote = extraPaths > 0 ? `
+    <div style="background:rgba(255,209,102,.06);border:1px solid rgba(255,209,102,.2);border-radius:8px;padding:12px 16px;font-size:12px;color:#ffd166;margin-bottom:16px">
+      ⚠ Rust has <strong>${extraPaths}</strong> extra path(s) vs C — these come from Rust's implicit
+      safety checks (overflow guards, bounds checks) and are expected behaviour, not bugs.
+    </div>` : '';
+
+  const statsHtml = `
+    <div class="stats-row">
+      <div class="stat"><span class="stat-val">${pathsC ?? '—'}</span><span class="stat-key">C Paths</span></div>
+      <div class="stat"><span class="stat-val">${pathsRust ?? '—'}</span><span class="stat-key">Rust Paths</span></div>
+      <div class="stat"><span class="stat-val">${inputsTested ?? '—'}</span><span class="stat-key">Inputs Tested</span></div>
+      <div class="stat"><span class="stat-val">${time}</span><span class="stat-key">Time</span></div>
+    </div>`;
+
   if (equivalent) {
     area.innerHTML = `
       <div class="result-card result-equiv">
         <div class="result-headline">✓ SEMANTICALLY EQUIVALENT</div>
-        <div class="result-sub">All execution paths produce identical outputs for every input within the specified bounds.</div>
-        <div class="stats-row">
-          <div class="stat"><span class="stat-val">${pathsC ?? '—'}</span><span class="stat-key">C Paths</span></div>
-          <div class="stat"><span class="stat-val">${pathsRust ?? '—'}</span><span class="stat-key">Rust Paths</span></div>
-          <div class="stat"><span class="stat-val">${inputsTested ?? '—'}</span><span class="stat-key">Inputs Tested</span></div>
-          <div class="stat"><span class="stat-val">${time}</span><span class="stat-key">Time</span></div>
-        </div>
+        <div class="result-sub">All execution paths produce identical outputs for every input in bounds.</div>
+        ${pathNote}
+        ${statsHtml}
       </div>`;
-  } else {
-    area.innerHTML = `
-      <div class="result-card result-neq">
-        <div class="result-headline">✗ NOT EQUIVALENT</div>
-        <div class="result-sub">A counterexample was found where the two programs return different values.</div>
-        <div class="ce-box">
-          <div class="ce-title">Counterexample</div>
-          <div class="ce-row"><span class="ce-label">Input</span><span class="ce-val ce-input-val">${fn_name}(${ceInput})</span></div>
-          <div class="ce-divider"></div>
-          <div class="ce-row"><span class="ce-label">C returns</span><span class="ce-val ce-c-val">${cRet}</span></div>
-          <div class="ce-row"><span class="ce-label">Rust returns</span><span class="ce-val ce-r-val">${rRet}</span></div>
-          <div class="ce-divider"></div>
-          <div class="ce-row"><span class="ce-label" style="font-size:11px">Time</span><span class="ce-val" style="font-size:12px;color:var(--muted)">${time}</span></div>
+    return;
+  }
+
+  // ── Build diff panel ──────────────────────────────
+  let diffHtml = '';
+  if (diff && diff.c_lines && diff.rust_lines) {
+    const cRows    = renderDiffRows(diff.c_lines);
+    const rustRows = renderDiffRows(diff.rust_lines);
+    diffHtml = `
+      <div style="margin-top:20px">
+        <div style="font-family:var(--mono);font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:10px">⟨/⟩ Side-by-Side Source Diff</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;border-radius:10px;overflow:hidden;border:1px solid var(--border)">
+          <div style="background:#060809;font-family:var(--mono);font-size:12px">
+            <div style="background:#0d1015;padding:8px 14px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+              <span style="background:rgba(0,229,255,.1);color:var(--accent);border:1px solid rgba(0,229,255,.2);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700">C</span>
+              Source of truth
+            </div>
+            <table style="border-collapse:collapse;width:100%">${cRows}</table>
+          </div>
+          <div style="background:#060809;font-family:var(--mono);font-size:12px">
+            <div style="background:#0d1015;padding:8px 14px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center">
+              <span style="background:rgba(255,77,109,.1);color:#ff8c9e;border:1px solid rgba(255,77,109,.25);padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700">RUST</span>
+              Migration under verification
+            </div>
+            <table style="border-collapse:collapse;width:100%">${rustRows}</table>
+          </div>
         </div>
       </div>`;
   }
+
+  // ── Suggestion box ────────────────────────────────
+//   let suggestionHtml = '';
+//   if (diff && diff.suggestion) {
+//     suggestionHtml = `
+//       <div style="margin-top:16px">
+//         <div style="font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">✏ Suggested Fix</div>
+//         <pre style="background:#060809;border:1px solid rgba(0,229,255,.12);border-radius:8px;padding:16px;font-family:var(--mono);font-size:12px;color:#c8d0dc;line-height:1.8;white-space:pre-wrap;word-break:break-word">${escHtml(diff.suggestion)}</pre>
+//       </div>
+//`;
+//   }
+
+        let suggestionHtml = '';
+
+  area.innerHTML = `
+    <div class="result-card result-neq">
+      <div class="result-headline">✗ NOT EQUIVALENT</div>
+      <div class="result-sub">A counterexample was found where the two programs return different values.</div>
+      ${pathNote}
+      ${statsHtml}
+      <div class="ce-box" style="margin-top:16px">
+        <div class="ce-title">Counterexample</div>
+        <div class="ce-row"><span class="ce-label">Input</span><span class="ce-val ce-input-val">${fn_name}(${ceInput})</span></div>
+        <div class="ce-divider"></div>
+        <div class="ce-row"><span class="ce-label">C returns</span><span class="ce-val ce-c-val">${cRet}</span></div>
+        <div class="ce-row"><span class="ce-label">Rust returns</span><span class="ce-val ce-r-val">${rRet}</span></div>
+      </div>
+      ${diffHtml}
+      ${suggestionHtml}
+    </div>`;
 }
+
+function renderDiffRows(lines) {
+  return lines.map(l => {
+    const hl   = l.highlight;
+    const text = escHtml(l.text);
+    const label = hl ? '<span style="display:inline-block;background:rgba(255,77,109,.15);color:#ff4d6d;font-size:10px;padding:1px 6px;border-radius:3px;margin-left:8px">DIFFERS</span>' : '';
+    const arrow = hl ? '<td style="width:20px;color:#ff4d6d;font-size:13px;padding:0 4px">←</td>' : '<td style="width:20px"></td>';
+    const rowStyle = hl
+      ? 'background:rgba(255,77,109,.1);border-left:3px solid #ff4d6d'
+      : '';
+    const codeColor = hl ? '#fff' : '#4a5568';
+    return `<tr style="${rowStyle}">
+      <td style="width:40px;padding:3px 8px;text-align:right;color:#2a3040;font-size:11px;user-select:none">${l.num}</td>
+      <td style="padding:3px 10px;white-space:pre;color:${codeColor};font-size:12px;line-height:1.6">${text}${label}</td>
+      ${arrow}
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 </script>
 </body>
 </html>

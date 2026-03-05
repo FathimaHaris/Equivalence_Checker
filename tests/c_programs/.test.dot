@@ -1,0 +1,12 @@
+digraph "CFG for 'test' function" {
+	label="CFG for 'test' function";
+
+	Node0x601ad9ae2390 [shape=record,color="#b70d28ff", style=filled, fillcolor="#b70d2870" fontname="Courier",label="{%1|{<s0>T|<s1>F}}"];
+	Node0x601ad9ae2390:s0 -> Node0x601ad9ae2290[tooltip="1 -> 9\nProbability 50.00%" ];
+	Node0x601ad9ae2390:s1 -> Node0x601ad9ae5130[tooltip="1 -> 10\nProbability 50.00%" ];
+	Node0x601ad9ae2290 [shape=record,color="#3d50c3ff", style=filled, fillcolor="#be242e70" fontname="Courier",label="{%9}"];
+	Node0x601ad9ae2290 -> Node0x601ad9ae5310[tooltip="9 -> 11\nProbability 100.00%" ];
+	Node0x601ad9ae5130 [shape=record,color="#3d50c3ff", style=filled, fillcolor="#be242e70" fontname="Courier",label="{%10}"];
+	Node0x601ad9ae5130 -> Node0x601ad9ae5310[tooltip="10 -> 11\nProbability 100.00%" ];
+	Node0x601ad9ae5310 [shape=record,color="#b70d28ff", style=filled, fillcolor="#b70d2870" fontname="Courier",label="{%11}"];
+}

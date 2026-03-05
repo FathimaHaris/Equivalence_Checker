@@ -2,16 +2,7 @@
 // ═══════════════════════════════════════════════════════
 // Module 3: IR Normalization
 // ═══════════════════════════════════════════════════════
-//
-// !! CRITICAL DESIGN NOTE !!
-// The bitcode files passed to KLEE must NOT be run through opt.
-// LLVM's mem2reg, dce, and instcombine passes can eliminate
-// klee_make_symbolic / klee_assume calls or merge branches,
-// causing KLEE to see only 1 path instead of 3.
-//
-// This module therefore:
-//   1. Makes a DIRECT copy of the compiler output for KLEE use.
-//   2. Produces a SEPARATE normalized copy (for the .ll display only).
+
 // ═══════════════════════════════════════════════════════
 
 use crate::types::AnalysisConfig;

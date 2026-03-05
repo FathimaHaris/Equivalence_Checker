@@ -1,551 +1,483 @@
 // src/symbolic/mod.rs
 // ═══════════════════════════════════════════════════════
 // Module 5: Symbolic Execution using KLEE
-// Steps: 0.5.1 Symbolic Inputs → 0.5.2 Path Exploration →
-//        0.5.3 Constraint Extraction → 0.5.4 Path Summary Construction
+//
+// DFD Structure (matches diagram):
+//   Instrumented IR
+//     → 0.5.1  Symbolic Input Generation   → symbolic inputs
+//     → 0.5.2  Path Exploration            → feasible execution paths
+//     → 0.5.3  Constraint & Observable Extraction → path constraints & symbolic observables
+//     → 0.5.4  Path Summary Construction   → symbolic path summaries
 // ═══════════════════════════════════════════════════════
 
 use crate::types::{
-    AnalysisConfig, PathSummary, ProgramKind, CheckerError,
-    ObservableEffects,
+    AnalysisConfig, PathSummary, ProgramKind, CheckerError, ObservableEffects,
 };
 use anyhow::Result;
-use std::process::Command;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
-/// Output from symbolic execution
 #[derive(Debug, Clone)]
 pub struct SymbolicSummaries {
-    pub c_summaries: Vec<PathSummary>,
+    pub c_summaries:    Vec<PathSummary>,
     pub rust_summaries: Vec<PathSummary>,
 }
 
-/// Main symbolic execution entry point
+// ── Top-level entry point ─────────────────────────────
+// Orchestrates all four DFD stages for both C and Rust IR.
+
 pub fn execute(
     config: &AnalysisConfig,
-    files: &crate::instrumentor::InstrumentedFiles,
+    files:  &crate::instrumentor::InstrumentedFiles,
 ) -> Result<SymbolicSummaries> {
-    println!("  Running KLEE on C IR...");
-    let c_summaries = run_klee(
+    println!("  Running symbolic execution on C IR...");
+    let c_summaries = run_symbolic_pipeline(
         &files.c_instrumented_path,
         &config.function_name,
         config.max_paths,
         config.timeout,
         ProgramKind::C,
     )?;
-    println!("    → Found {} paths", c_summaries.len());
+    println!("    → Found {} C paths", c_summaries.len());
 
-    println!("  Running KLEE on Rust IR...");
-    let rust_summaries = run_klee(
+    println!("  Running symbolic execution on Rust IR...");
+    let rust_summaries = run_symbolic_pipeline(
         &files.rust_instrumented_path,
         &config.function_name,
         config.max_paths,
         config.timeout,
         ProgramKind::Rust,
     )?;
-    println!("    → Found {} paths", rust_summaries.len());
+    println!("    → Found {} Rust paths", rust_summaries.len());
 
-    // If KLEE found very few paths (likely missed branches), warn the user
-    let expected_min = 1usize;
-    if c_summaries.len() <= expected_min || rust_summaries.len() <= expected_min {
+    if c_summaries.len() <= 1 || rust_summaries.len() <= 1 {
         println!("    ⚠ Warning: KLEE may have missed some paths.");
         println!("      C paths: {}, Rust paths: {}", c_summaries.len(), rust_summaries.len());
-        println!("      The equivalence checker will use concrete testing as a fallback.");
     }
 
-    Ok(SymbolicSummaries {
-        c_summaries,
-        rust_summaries,
-    })
+    Ok(SymbolicSummaries { c_summaries, rust_summaries })
 }
 
-// ───────────────────────────────────────────────────────
-// Step 0.5.1 & 0.5.2: KLEE Execution
-// ───────────────────────────────────────────────────────
+// ── Full pipeline for one program ────────────────────
+// Runs stages 0.5.1 → 0.5.2 → 0.5.3 → 0.5.4 in sequence.
 
-fn run_klee(
-    ir_path: &str,
+fn run_symbolic_pipeline(
+    ir_path:       &str,
     function_name: &str,
-    _max_paths: u32,
-    timeout: u32,
-    program_kind: ProgramKind,
+    max_paths:     u32,
+    timeout:       u32,
+    program_kind:  ProgramKind,
 ) -> Result<Vec<PathSummary>> {
-    let kind_str = match program_kind {
-        ProgramKind::C => "C",
-        ProgramKind::Rust => "Rust",
-    };
+    // ── 0.5.1  Symbolic Input Generation ─────────────
+    let klee_out_dir = stage_051_symbolic_input_generation(
+        ir_path, function_name, &program_kind,
+    )?;
 
+    // ── 0.5.2  Path Exploration ───────────────────────
+    let test_numbers = stage_052_path_exploration(
+        ir_path, function_name, max_paths, timeout, &program_kind, &klee_out_dir,
+    )?;
+
+    // ── 0.5.3  Constraint & Observable Extraction ────
+    let raw_paths = stage_053_constraint_observable_extraction(
+        &klee_out_dir, &test_numbers,
+    )?;
+
+    // ── 0.5.4  Path Summary Construction ─────────────
+    let summaries = stage_054_path_summary_construction(raw_paths, &program_kind);
+
+    Ok(summaries)
+}
+
+// ═══════════════════════════════════════════════════════
+// 0.5.1  Symbolic Input Generation
+// ═══════════════════════════════════════════════════════
+// Input:  Instrumented IR (ir_path)
+// Output: KLEE output directory path (symbolic inputs ready)
+
+fn stage_051_symbolic_input_generation(
+    _ir_path:      &str,
+    function_name: &str,
+    program_kind:  &ProgramKind,
+) -> Result<String> {
+    let kind_str = match program_kind { ProgramKind::C => "C", ProgramKind::Rust => "Rust" };
     let klee_out_dir = format!(
         "/tmp/equivalence_checker/klee_{}_{}",
         function_name, kind_str
     );
 
+    // Clean up any previous run so KLEE starts fresh.
     if Path::new(&klee_out_dir).exists() {
         let _ = fs::remove_dir_all(&klee_out_dir);
     }
 
-    let mut cmd = Command::new("/home/fathima/klee/build/bin/klee");
-    cmd.arg("--output-dir").arg(&klee_out_dir);
-    cmd.arg("--optimize=false");
-    cmd.arg("--search=dfs");
-    cmd.arg("--max-forks=500");
-    cmd.arg("--max-depth=500");
-    cmd.arg("--max-tests=200");
-    cmd.arg(format!("--max-time={}", timeout));
-    cmd.arg("--simplify-sym-indices");
-    cmd.arg("--write-test-info");
-    cmd.arg("--write-paths");
-    cmd.arg("--write-kqueries");
-    cmd.arg("--max-memory=1000");
-
-    // ── Entry point ────────────────────────────────────
-    match program_kind {
-        ProgramKind::C => {
-            cmd.arg("--entry-point=main");
-        }
-        ProgramKind::Rust => {
-            // klee_harness is exported as #[no_mangle] pub extern "C"
-            cmd.arg("--entry-point=klee_harness");
-        }
-    }
-
-    cmd.arg(ir_path);
-
-    println!("    Running KLEE (this may take up to {} seconds)...", timeout);
-    let output = cmd.output()?;
-
-    // Print KLEE stderr for debugging
-    let klee_stderr = String::from_utf8_lossy(&output.stderr);
-    if !klee_stderr.is_empty() {
-        // Only print warnings/errors, skip verbose lines
-        for line in klee_stderr.lines() {
-            if line.contains("ERROR") || line.contains("WARNING") || line.contains("KLEE:") {
-                println!("    [KLEE] {}", line);
-            }
-        }
-    }
-
-    if !Path::new(&klee_out_dir).exists() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(CheckerError::SymbolicExecutionError(format!(
-            "KLEE failed to create output directory:\n{}",
-            stderr
-        ))
-        .into());
-    }
-
-    // Step 0.5.3 & 0.5.4: Parse output into path summaries
-    let summaries = parse_klee_output(&klee_out_dir, program_kind)?;
-    Ok(summaries)
+    println!("    [0.5.1] Symbolic input generation → {}", klee_out_dir);
+    Ok(klee_out_dir)
 }
 
-// ───────────────────────────────────────────────────────
-// Step 0.5.3: Parse KLEE output directory
-// ───────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// 0.5.2  Path Exploration
+// ═══════════════════════════════════════════════════════
+// Input:  Symbolic inputs (ir_path + klee_out_dir)
+// Output: Feasible execution paths (test case numbers produced by KLEE)
 
-fn parse_klee_output(klee_dir: &str, program_kind: ProgramKind) -> Result<Vec<PathSummary>> {
-    let mut summaries = Vec::new();
+fn stage_052_path_exploration(
+    ir_path:       &str,
+    function_name: &str,
+    _max_paths:    u32,
+    timeout:       u32,
+    program_kind:  &ProgramKind,
+    klee_out_dir:  &str,
+) -> Result<Vec<usize>> {
+    println!("    [0.5.2] Path exploration (KLEE, up to {}s)…", timeout);
+
+    let mut cmd = Command::new("/home/fathima/klee/build/bin/klee");
+    cmd.arg("--output-dir").arg(klee_out_dir)
+       .arg("--optimize=false")
+       .arg("--search=dfs")
+       .arg("--max-forks=500")
+       .arg("--max-depth=500")
+       .arg("--max-tests=200")
+       .arg(format!("--max-time={}", timeout))
+       .arg("--simplify-sym-indices")
+       .arg("--write-test-info")
+       .arg("--write-paths")
+       .arg("--write-kqueries")
+       .arg("--max-memory=1000");
+
+    match program_kind {
+        ProgramKind::C    => cmd.arg("--entry-point=main"),
+        ProgramKind::Rust => cmd.arg("--entry-point=klee_harness"),
+    };
+    cmd.arg(ir_path);
+
+    let output = cmd.output()?;
+
+    for line in String::from_utf8_lossy(&output.stderr).lines() {
+        if line.contains("ERROR") || line.contains("WARNING") || line.contains("KLEE:") {
+            println!("    [KLEE] {}", line);
+        }
+    }
+
+    if !Path::new(klee_out_dir).exists() {
+        return Err(CheckerError::SymbolicExecutionError(format!(
+            "KLEE failed for {} ({})\n{}",
+            function_name,
+            match program_kind { ProgramKind::C => "C", ProgramKind::Rust => "Rust" },
+            String::from_utf8_lossy(&output.stderr)
+        )).into());
+    }
+
+    // Collect the test case numbers that represent feasible execution paths.
     let mut test_numbers = Vec::new();
-
-    let entries = fs::read_dir(klee_dir)?;
-    for entry in entries {
+    for entry in fs::read_dir(klee_out_dir)? {
         let entry = entry?;
-        let path = entry.path();
-        if let Some(name) = path.file_name() {
-            let name_str = name.to_string_lossy();
-            if name_str.starts_with("test") && name_str.ends_with(".ktest") {
-                let num_part =
-                    &name_str["test".len()..name_str.len() - ".ktest".len()];
-                if let Ok(num) = num_part.parse::<usize>() {
-                    test_numbers.push(num);
-                }
+        let name  = entry.file_name();
+        let s     = name.to_string_lossy();
+        if s.starts_with("test") && s.ends_with(".ktest") {
+            if let Ok(n) = s["test".len()..s.len()-".ktest".len()].parse::<usize>() {
+                test_numbers.push(n);
             }
         }
     }
-
     test_numbers.sort();
-    println!("    Found {} test cases", test_numbers.len());
+    println!("    [0.5.2] Found {} feasible execution paths", test_numbers.len());
+    Ok(test_numbers)
+}
 
-    for test_num in test_numbers {
-        match build_path_summary(test_num, klee_dir, &program_kind) {
-            Ok(summary) => summaries.push(summary),
-            Err(e) => {
-                println!(
-                    "      Warning: Failed to build summary for test {}: {}",
-                    test_num, e
-                );
-            }
-        }
+// ═══════════════════════════════════════════════════════
+// 0.5.3  Constraint & Observable Extraction
+// ═══════════════════════════════════════════════════════
+// Input:  Feasible execution paths (test numbers + klee_out_dir)
+// Output: Path constraints & symbolic observables (RawPathData per test)
+
+struct RawPathData {
+    test_num:    usize,
+    constraints: Vec<String>,
+    witness:     Vec<(String, i64)>,
+}
+
+fn stage_053_constraint_observable_extraction(
+    klee_dir:     &str,
+    test_numbers: &[usize],
+) -> Result<Vec<RawPathData>> {
+    println!("    [0.5.3] Extracting path constraints & symbolic observables…");
+
+    let mut raw_paths = Vec::new();
+
+    for &num in test_numbers {
+        let kquery_path = format!("{}/test{:06}.kquery", klee_dir, num);
+        let ktest_path  = format!("{}/test{:06}.ktest",  klee_dir, num);
+
+        // Extract path constraints from the .kquery file.
+        let constraints = if Path::new(&kquery_path).exists() {
+            parse_kquery_constraints(Path::new(&kquery_path))?
+        } else {
+            vec!["true".to_string()]
+        };
+
+        // Extract symbolic observables (witness values) from the .ktest file.
+        let witness = if Path::new(&ktest_path).exists() {
+            let w = parse_ktest_binary(Path::new(&ktest_path))?;
+            if w.is_empty() {
+                println!("      [0.5.3] binary parse empty for test {:06}, trying ktest-tool…", num);
+                parse_ktest_via_tool(Path::new(&ktest_path)).unwrap_or_default()
+            } else { w }
+        } else {
+            vec![]
+        };
+
+        println!(
+            "      test {:06}: {} constraints, witness={:?}",
+            num, constraints.len(), witness
+        );
+
+        raw_paths.push(RawPathData { test_num: num, constraints, witness });
     }
 
-    // If KLEE produced no usable summaries, create a placeholder
-    // so the pipeline can still continue with concrete testing
+    Ok(raw_paths)
+}
+
+// ═══════════════════════════════════════════════════════
+// 0.5.4  Path Summary Construction
+// ═══════════════════════════════════════════════════════
+// Input:  Path constraints & symbolic observables (RawPathData)
+// Output: Symbolic path summaries (Vec<PathSummary>)
+
+fn stage_054_path_summary_construction(
+    raw_paths:    Vec<RawPathData>,
+    program_kind: &ProgramKind,
+) -> Vec<PathSummary> {
+    println!("    [0.5.4] Constructing path summaries…");
+
+    let mut summaries: Vec<PathSummary> = raw_paths
+        .into_iter()
+        .map(|raw| PathSummary {
+            id:          format!("{:?}-{}", program_kind, raw.test_num),
+            program:     program_kind.clone(),
+            constraints: raw.constraints,
+            // kquery always ends with "false)" — no real return expression stored there.
+            // The equivalence checker obtains return values by running the compiled binaries.
+            return_expr: None,
+            witness:     raw.witness,
+            observables: ObservableEffects::default(),
+        })
+        .collect();
+
+    // Guarantee at least one summary so downstream stages always have input.
     if summaries.is_empty() {
-        println!("    ⚠ No summaries built from KLEE output — using placeholder");
         summaries.push(PathSummary {
-            id: format!("{:?}-placeholder", program_kind),
-            program: program_kind,
+            id:          format!("{:?}-placeholder", program_kind),
+            program:     program_kind.clone(),
             constraints: vec!["true".to_string()],
             return_expr: None,
-            witness: vec![],
+            witness:     vec![],
             observables: ObservableEffects::default(),
         });
     }
 
-    Ok(summaries)
+    println!("    [0.5.4] {} symbolic path summaries constructed", summaries.len());
+    summaries
 }
 
-// ───────────────────────────────────────────────────────
-// Step 0.5.4: Build PathSummary from KLEE files
-// ───────────────────────────────────────────────────────
+// ── .kquery constraint parser ─────────────────────────
 
-fn build_path_summary(
-    test_num: usize,
-    klee_dir: &str,
-    program_kind: &ProgramKind,
-) -> Result<PathSummary> {
-    let kquery_path = format!("{}/test{:06}.kquery", klee_dir, test_num);
-    let ktest_path = format!("{}/test{:06}.ktest", klee_dir, test_num);
-
-    // Step 0.5.3: Constraints from .kquery
-    let constraints = if Path::new(&kquery_path).exists() {
-        parse_kquery_file(Path::new(&kquery_path))?
-    } else {
-        vec!["true".to_string()]
-    };
-
-    // Return expression
-    let return_expr = if Path::new(&kquery_path).exists() {
-        extract_return_expr_from_kquery(Path::new(&kquery_path))?
-    } else {
-        None
-    };
-
-    // Concrete witness from .ktest
-    let witness = if Path::new(&ktest_path).exists() {
-        parse_ktest_file(Path::new(&ktest_path))?
-    } else {
-        vec![]
-    };
-
-    println!(
-        "      Test {:06}: {} constraints, witness={:?}, return={:?}",
-        test_num,
-        constraints.len(),
-        witness,
-        return_expr
-    );
-
-    Ok(PathSummary {
-        id: format!("{:?}-{}", program_kind, test_num),
-        program: program_kind.clone(),
-        constraints,
-        return_expr,
-        witness,
-        observables: ObservableEffects::default(),
-    })
-}
-
-// ───────────────────────────────────────────────────────
-// .kquery Parser
-// ───────────────────────────────────────────────────────
-
-/// Parse KLEE .kquery file to extract path constraints
-/// KLEE .kquery format: (query [ ...constraints... ] false)
-fn parse_kquery_file(path: &Path) -> Result<Vec<String>> {
+fn parse_kquery_constraints(path: &Path) -> Result<Vec<String>> {
     let content = fs::read_to_string(path)?;
     let mut constraints = Vec::new();
 
-    // Find constraint list between '[' and ']' inside "(query ["
-    if let Some(start_pos) = content.find("(query [") {
-        let after = &content[start_pos + 8..];
-        if let Some(end_pos) = find_matching_bracket(after) {
-            let constraint_section = &after[..end_pos];
-
-            // Parse top-level S-expressions
+    if let Some(start) = content.find("(query [") {
+        let after = &content[start + "(query [".len()..];
+        if let Some(end) = find_matching_square_bracket(after) {
+            let section = &after[..end];
             let mut depth = 0usize;
-            let mut current = String::new();
-
-            for c in constraint_section.chars() {
+            let mut cur   = String::new();
+            for c in section.chars() {
                 match c {
-                    '(' => {
+                    '(' => { if depth == 0 { cur.clear(); } depth += 1; cur.push(c); }
+                    ')' if depth > 0 => {
+                        depth -= 1; cur.push(c);
                         if depth == 0 {
-                            current.clear();
-                        }
-                        depth += 1;
-                        current.push(c);
-                    }
-                    ')' => {
-                        if depth > 0 {
-                            depth -= 1;
-                            current.push(c);
-                            if depth == 0 {
-                                let trimmed = current.trim().to_string();
-                                if !trimmed.is_empty() {
-                                    constraints.push(trimmed);
-                                }
-                                current.clear();
-                            }
+                            let t = cur.trim().to_string();
+                            if !t.is_empty() { constraints.push(t); }
+                            cur.clear();
                         }
                     }
-                    _ if depth > 0 => current.push(c),
-                    _ => {} // whitespace between top-level expressions
+                    _ if depth > 0 => cur.push(c),
+                    _ => {}
                 }
             }
         }
     }
 
-    if constraints.is_empty() {
-        constraints.push("true".to_string());
-    }
-
+    if constraints.is_empty() { constraints.push("true".to_string()); }
     Ok(constraints)
 }
 
-/// Find the position of the matching ']' for the '[' we just passed
-fn find_matching_bracket(s: &str) -> Option<usize> {
-    // We are already past '[', find the matching ']' at depth 0
-    // (respecting nested parens inside, but brackets are not nested in kquery)
-    let mut paren_depth = 0i32;
+fn find_matching_square_bracket(s: &str) -> Option<usize> {
+    let mut depth = 0i32;
     for (i, c) in s.char_indices() {
         match c {
-            '(' => paren_depth += 1,
-            ')' => paren_depth -= 1,
-            ']' if paren_depth == 0 => return Some(i),
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ']' if depth == 0 => return Some(i),
             _ => {}
         }
     }
     None
 }
 
-/// Extract the return value expression from a .kquery file.
-///
-/// KLEE encodes the return/result as the *query expression* — the part
-/// after `] ` and before the closing `)` of the outer `(query …)` call.
-/// For a path that returns a constant the expression is something like
-/// `(w32 2)` or just `false` (meaning the constraint set is the focus,
-/// not the expression).  We capture whatever is there so the equivalence
-/// checker can compare it symbolically.
-fn extract_return_expr_from_kquery(path: &Path) -> Result<Option<String>> {
-    let content = fs::read_to_string(path)?;
+// ── .ktest binary parser (little-endian) ─────────────
 
-    // Pattern: (query [ constraints ] EXPR )
-    // We want EXPR — everything after the closing ']' up to the final ')'
-    if let Some(start_pos) = content.find("(query [") {
-        let after = &content[start_pos + 8..];
-        if let Some(bracket_end) = find_matching_bracket(after) {
-            // after bracket_end+1 we have whitespace then the expression
-            let rest = after[bracket_end + 1..].trim();
-            // rest starts with the expression; grab the first token/s-expr
-            let expr = extract_first_token_or_sexpr(rest);
-            if !expr.is_empty() && expr != "false" && expr != ")" {
-                return Ok(Some(expr));
-            }
-        }
-    }
-    Ok(None)
-}
-
-/// Extract the first complete token or S-expression from the start of `s`
-fn extract_first_token_or_sexpr(s: &str) -> String {
-    let s = s.trim();
-    if s.starts_with('(') {
-        // Collect balanced S-expression
-        let mut depth = 0usize;
-        let mut result = String::new();
-        for c in s.chars() {
-            match c {
-                '(' => {
-                    depth += 1;
-                    result.push(c);
-                }
-                ')' => {
-                    depth -= 1;
-                    result.push(c);
-                    if depth == 0 {
-                        return result;
-                    }
-                }
-                _ => result.push(c),
-            }
-        }
-        result
-    } else {
-        // Plain token (keyword, number, …)
-        s.split_whitespace()
-            .next()
-            .unwrap_or("")
-            .trim_end_matches(')')
-            .to_string()
-    }
-}
-
-// ───────────────────────────────────────────────────────
-// .ktest Parser (concrete witness values)
-// ───────────────────────────────────────────────────────
-
-fn parse_ktest_file(path: &Path) -> Result<Vec<(String, i64)>> {
-    let output = Command::new("ktest-tool").arg(path).output();
-
-    let output = match output {
-        Ok(o) => o,
-        Err(_) => {
-            // ktest-tool not available; try to parse binary directly
-            return parse_ktest_binary(path);
-        }
-    };
-
-    if !output.status.success() {
-        return parse_ktest_binary(path);
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let mut values = Vec::new();
-    let mut current_name = String::new();
-
-    for line in stdout.lines() {
-        let line = line.trim();
-        if line.starts_with("name:") {
-            // name: 'x'
-            if let Some(start) = line.find('\'') {
-                if let Some(end) = line[start + 1..].find('\'') {
-                    current_name = line[start + 1..start + 1 + end].to_string();
-                }
-            }
-        } else if (line.contains("int :") || line.contains("i32 :"))
-            && !current_name.is_empty()
-        {
-            // data: 5
-            // int : 5
-            if let Some(colon_pos) = line.rfind(':') {
-                let value_str = line[colon_pos + 1..].trim();
-                // ktest-tool sometimes outputs hex
-                let parsed = if value_str.starts_with("0x") {
-                    i64::from_str_radix(&value_str[2..], 16).ok()
-                } else {
-                    value_str.parse::<i32>().ok().map(|v| v as i64)
-                };
-                if let Some(v) = parsed {
-                    values.push((current_name.clone(), v));
-                    current_name.clear();
-                }
-            }
-        } else if line.starts_with("data:") && !current_name.is_empty() {
-            // data: \x05\x00\x00\x00  (little-endian i32)
-            // Try to read the bytes
-            let data_part = line[5..].trim();
-            if let Some(v) = parse_ktest_data_bytes(data_part) {
-                values.push((current_name.clone(), v));
-                current_name.clear();
-            }
-        }
-    }
-
-    Ok(values)
-}
-
-/// Very simple binary .ktest reader for when ktest-tool is unavailable.
-/// Format: magic "KTEST" version(u32) num_args args... num_objects objects...
-/// object: name_len(u32) name(bytes) data_len(u32) data(bytes)
+/// KLEE .ktest format — ALL integers are LITTLE-ENDIAN.
+/// magic(5) version(u32le) num_args(u32le) [arg_len(u32le) arg_bytes...]*
+/// num_objects(u32le) [name_len(u32le) name_bytes data_len(u32le) data_bytes...]*
 fn parse_ktest_binary(path: &Path) -> Result<Vec<(String, i64)>> {
     let bytes = fs::read(path)?;
-    let mut values = Vec::new();
+    let mut vals = Vec::new();
 
-    // Check magic
     if bytes.len() < 5 || &bytes[0..5] != b"KTEST" {
-        return Ok(values);
+        println!("      [ktest] bad magic in {:?}", path);
+        return Ok(vals);
     }
 
-    let mut pos = 5;
-    // version (4 bytes)
-    if pos + 4 > bytes.len() {
-        return Ok(values);
-    }
-    pos += 4;
+    let mut pos = 5usize;
 
-    // num_args (4 bytes)
-    if pos + 4 > bytes.len() {
-        return Ok(values);
+    macro_rules! read_u32le {
+        () => {{
+            if pos + 4 > bytes.len() { return Ok(vals); }
+            let v = u32::from_le_bytes([bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]]) as usize;
+            pos += 4;
+            v
+        }};
     }
-    let num_args = u32::from_be_bytes([bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]]) as usize;
-    pos += 4;
 
-    // skip args
+    let _version    = read_u32le!();
+    let num_args    = read_u32le!();
     for _ in 0..num_args {
-        if pos + 4 > bytes.len() { return Ok(values); }
-        let len = u32::from_be_bytes([bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]]) as usize;
-        pos += 4 + len;
+        let len = read_u32le!();
+        if pos + len > bytes.len() { return Ok(vals); }
+        pos += len;
     }
 
-    // num_objects
-    if pos + 4 > bytes.len() { return Ok(values); }
-    let num_objects = u32::from_be_bytes([bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]]) as usize;
-    pos += 4;
+    let num_objects = read_u32le!();
+    println!("      [ktest] {} objects in {:?}", num_objects, path.file_name().unwrap_or_default());
 
     for _ in 0..num_objects {
-        // name
-        if pos + 4 > bytes.len() { break; }
-        let name_len = u32::from_be_bytes([bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]]) as usize;
-        pos += 4;
+        let name_len = read_u32le!();
         if pos + name_len > bytes.len() { break; }
         let name = String::from_utf8_lossy(&bytes[pos..pos+name_len])
-            .trim_end_matches('\0')
-            .to_string();
+            .trim_end_matches('\0').to_string();
         pos += name_len;
 
-        // data
-        if pos + 4 > bytes.len() { break; }
-        let data_len = u32::from_be_bytes([bytes[pos], bytes[pos+1], bytes[pos+2], bytes[pos+3]]) as usize;
-        pos += 4;
+        let data_len = read_u32le!();
         if pos + data_len > bytes.len() { break; }
         let data = &bytes[pos..pos+data_len];
         pos += data_len;
 
-        // Interpret as little-endian i32 if 4 bytes
-        if data_len == 4 {
-            let val = i32::from_le_bytes([data[0], data[1], data[2], data[3]]) as i64;
-            values.push((name, val));
+        let val: Option<i64> = match data_len {
+            1 => Some(i64::from(data[0] as i8)),
+            2 => Some(i16::from_le_bytes([data[0], data[1]]) as i64),
+            4 => Some(i32::from_le_bytes([data[0], data[1], data[2], data[3]]) as i64),
+            8 => Some(i64::from_le_bytes([
+                data[0], data[1], data[2], data[3],
+                data[4], data[5], data[6], data[7],
+            ])),
+            _ => None,
+        };
+        println!("      [ktest] name={:?} data_len={} val={:?}", name, data_len, val);
+        if let Some(v) = val { vals.push((name, v)); }
+    }
+    Ok(vals)
+}
+
+// ── ktest-tool fallback ───────────────────────────────
+
+fn parse_ktest_via_tool(path: &Path) -> Result<Vec<(String, i64)>> {
+    let ktest_tool_paths = [
+        "/home/fathima/klee/build/bin/ktest-tool",
+        "/usr/local/bin/ktest-tool",
+        "/usr/bin/ktest-tool",
+        "ktest-tool",
+    ];
+
+    let mut tool_path = None;
+    for p in &ktest_tool_paths {
+        if Path::new(p).exists() || p == &"ktest-tool" {
+            tool_path = Some(*p);
+            break;
         }
     }
 
-    Ok(values)
-}
+    let tool = tool_path.unwrap_or("ktest-tool");
+    let out = Command::new(tool).arg(path).output();
 
-/// Parse ktest-tool "data:" line bytes like `\x05\x00\x00\x00`
-fn parse_ktest_data_bytes(s: &str) -> Option<i64> {
-    // Collect up to 4 bytes from \xHH escapes
-    let mut bytes = Vec::new();
-    let mut i = 0;
-    let chars: Vec<char> = s.chars().collect();
-    while i < chars.len() && bytes.len() < 4 {
-        if chars[i] == '\\' && i + 3 < chars.len() && chars[i+1] == 'x' {
-            let hex: String = chars[i+2..i+4].iter().collect();
-            if let Ok(b) = u8::from_str_radix(&hex, 16) {
-                bytes.push(b);
-                i += 4;
-                continue;
+    let out = match out {
+        Ok(o)  => o,
+        Err(e) => {
+            println!("      [ktest-tool] not available: {}", e);
+            return Ok(vec![]);
+        }
+    };
+
+    let text   = String::from_utf8_lossy(&out.stdout);
+    let mut vals: Vec<(String, i64)> = Vec::new();
+    let mut current_name: Option<String> = None;
+
+    for line in text.lines() {
+        let line = line.trim();
+        if line.contains("name:") {
+            if let Some(start) = line.find('\'') {
+                if let Some(end) = line[start+1..].find('\'') {
+                    current_name = Some(line[start+1..start+1+end].to_string());
+                }
             }
         }
-        i += 1;
+        if line.contains(" int :") || line.contains(" int:") {
+            let parts: Vec<&str> = line.splitn(2, ':').collect();
+            if let Some(val_str) = parts.last() {
+                let clean = val_str.replace(':', "").trim().to_string();
+                if let Ok(v) = clean.parse::<i64>() {
+                    if let Some(name) = current_name.take() {
+                        vals.push((name, v));
+                    }
+                }
+            }
+        }
+        if line.contains("data:") && line.contains("\\x") {
+            let hex_part = line[line.find("\\x").unwrap()..].to_string();
+            let hex_bytes: Vec<u8> = hex_part.split("\\x")
+                .filter(|s| s.len() >= 2)
+                .filter_map(|s| u8::from_str_radix(&s[..2], 16).ok())
+                .collect();
+            let val: Option<i64> = match hex_bytes.len() {
+                1 => Some(hex_bytes[0] as i8 as i64),
+                2 => Some(i16::from_le_bytes([hex_bytes[0], hex_bytes[1]]) as i64),
+                4 => Some(i32::from_le_bytes([
+                    hex_bytes[0], hex_bytes[1], hex_bytes[2], hex_bytes[3]
+                ]) as i64),
+                8 => Some(i64::from_le_bytes([
+                    hex_bytes[0], hex_bytes[1], hex_bytes[2], hex_bytes[3],
+                    hex_bytes[4], hex_bytes[5], hex_bytes[6], hex_bytes[7],
+                ])),
+                _ => None,
+            };
+            if let (Some(name), Some(v)) = (current_name.take(), val) {
+                vals.push((name, v));
+            }
+        }
     }
-    if bytes.len() == 4 {
-        Some(i32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as i64)
-    } else {
-        None
-    }
-}
 
-// ───────────────────────────────────────────────────────
-// Utility
-// ───────────────────────────────────────────────────────
+    println!("      [ktest-tool] parsed witness: {:?}", vals);
+    Ok(vals)
+}
 
 #[allow(dead_code)]
 pub fn display_klee_stats(klee_dir: &str) -> Result<()> {
-    let stats_path = format!("{}/run.stats", klee_dir);
-    if Path::new(&stats_path).exists() {
-        let content = fs::read_to_string(&stats_path)?;
-        println!("\nKLEE Statistics:\n{}", content);
+    let info_path = format!("{}/info", klee_dir);
+    if Path::new(&info_path).exists() {
+        println!("\nKLEE Info:\n{}", fs::read_to_string(&info_path)?);
     }
     Ok(())
 }

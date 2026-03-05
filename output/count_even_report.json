@@ -1,0 +1,15 @@
+{
+  "verdict": "Equivalent",
+  "paths_compared": 203,
+  "counterexample": null,
+  "time_taken": 8.052465946,
+  "statistics": {
+    "total_paths_c": 101,
+    "total_paths_rust": 102,
+    "merged_pairs": 812,
+    "z3_queries": 203,
+    "z3_time_ms": 0
+  },
+  "c_path": null,
+  "rust_path": null
+}

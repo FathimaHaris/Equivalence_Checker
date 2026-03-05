@@ -1,25 +1,33 @@
 {
   "verdict": "NotEquivalent",
-  "paths_compared": 1,
+  "paths_compared": 8,
   "counterexample": {
     "inputs": [
       [
         "x",
-        35
+        1
+      ],
+      [
+        "low",
+        4
+      ],
+      [
+        "high",
+        0
       ]
     ],
     "c_behavior": {
-      "return_value": "35",
+      "return_value": "4",
       "stdout": [
-        "35"
+        "4"
       ],
       "stderr": [],
       "globals": []
     },
     "rust_behavior": {
-      "return_value": "2",
+      "return_value": "0",
       "stdout": [
-        "2"
+        "0"
       ],
       "stderr": [],
       "globals": []
@@ -27,29 +35,38 @@
     "differences": [
       {
         "kind": "ReturnValue",
-        "c_value": "35",
-        "rust_value": "2"
+        "c_value": "4",
+        "rust_value": "0"
       }
     ]
   },
-  "time_taken": 0.043558848,
+  "time_taken": 1.247341387,
   "statistics": {
-    "total_paths_c": 2,
-    "total_paths_rust": 3,
+    "total_paths_c": 3,
+    "total_paths_rust": 6,
     "merged_pairs": 0,
-    "z3_queries": 1,
-    "z3_time_ms": 0
+    "z3_queries": 7,
+    "z3_time_ms": 4650
   },
   "c_path": {
-    "id": "C-1",
+    "id": "C-3",
     "program": "C",
     "constraints": [
       "(Sle 0\n              N0:(ReadLSB w32 0 x))",
       "(Sle N0 100)",
-      "(Eq false (Sle N0 10))"
+      "(Sle 0\n              N1:(ReadLSB w32 0 low))",
+      "(Sle N1 100)",
+      "(Sle 0\n              N2:(ReadLSB w32 0 high))",
+      "(Sle N2 100)",
+      "(Slt N0 N1)"
     ],
     "return_expr": null,
-    "witness": [],
+    "witness": [
+      [
+        "high",
+        0
+      ]
+    ],
     "observables": {
       "stdout": [],
       "stderr": [],
@@ -58,15 +75,29 @@
     }
   },
   "rust_path": {
-    "id": "Rust-2",
+    "id": "Rust-5",
     "program": "Rust",
     "constraints": [
       "(Sle 0\n              N0:(ReadLSB w32 0 x))",
       "(Extract 0 (ZExt w8 (Sle N0 100)))",
-      "(Eq false (Slt N0 10))"
+      "(Sle 0\n              N1:(ReadLSB w32 0 low))",
+      "(Extract 0 (ZExt w8 (Sle N1 100)))",
+      "(Sle 0\n              N2:(ReadLSB w32 0 high))",
+      "(Extract 0 (ZExt w8 (Sle N2 100)))",
+      "(Eq false (Slt N2 N0))",
+      "(Slt N0 N1)"
     ],
     "return_expr": null,
-    "witness": [],
+    "witness": [
+      [
+        "x",
+        0
+      ],
+      [
+        "low",
+        4
+      ]
+    ],
     "observables": {
       "stdout": [],
       "stderr": [],

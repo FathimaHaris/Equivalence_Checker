@@ -109,6 +109,8 @@ pub struct EquivalenceResult {
     pub counterexample: Option<Counterexample>,
     pub time_taken: f64,
     pub statistics: CheckerStatistics,
+    pub c_path:  Option<PathSummary>,   
+    pub rust_path: Option<PathSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -19,7 +19,8 @@ mod instrumentor;
 mod symbolic;
 mod equivalence;
 mod reporter;
-mod server;                          // ← new
+mod server; 
+mod diff;                       // ← new
 
 use types::{AnalysisConfig, InputBound, Verdict};
 

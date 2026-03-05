@@ -1,0 +1,12 @@
+digraph "CFG for 'compute' function" {
+	label="CFG for 'compute' function";
+
+	Node0x56f6191381d0 [shape=record,color="#b70d28ff", style=filled, fillcolor="#b70d2870" fontname="Courier",label="{2:\l|  %3 = alloca i32, align 4\l  %4 = alloca i32, align 4\l  %5 = alloca i32, align 4\l  store i32 %0, ptr %4, align 4\l  store i32 %1, ptr %5, align 4\l  %6 = load i32, ptr %4, align 4\l  %7 = icmp sge i32 %6, 10\l  br i1 %7, label %8, label %12\l|{<s0>T|<s1>F}}"];
+	Node0x56f6191381d0:s0 -> Node0x56f6191380d0[tooltip="2 -> 8\nProbability 50.00%" ];
+	Node0x56f6191381d0:s1 -> Node0x56f61913a5e0[tooltip="2 -> 12\nProbability 50.00%" ];
+	Node0x56f6191380d0 [shape=record,color="#3d50c3ff", style=filled, fillcolor="#be242e70" fontname="Courier",label="{8:\l|  %9 = load i32, ptr %4, align 4\l  %10 = load i32, ptr %5, align 4\l  %11 = add nsw i32 %9, %10\l  store i32 %11, ptr %3, align 4\l  br label %16\l}"];
+	Node0x56f6191380d0 -> Node0x56f61913a8c0[tooltip="8 -> 16\nProbability 100.00%" ];
+	Node0x56f61913a5e0 [shape=record,color="#3d50c3ff", style=filled, fillcolor="#be242e70" fontname="Courier",label="{12:\l|  %13 = load i32, ptr %4, align 4\l  %14 = load i32, ptr %5, align 4\l  %15 = mul nsw i32 %13, %14\l  store i32 %15, ptr %3, align 4\l  br label %16\l}"];
+	Node0x56f61913a5e0 -> Node0x56f61913a8c0[tooltip="12 -> 16\nProbability 100.00%" ];
+	Node0x56f61913a8c0 [shape=record,color="#b70d28ff", style=filled, fillcolor="#b70d2870" fontname="Courier",label="{16:\l|  %17 = load i32, ptr %3, align 4\l  ret i32 %17\l}"];
+}
