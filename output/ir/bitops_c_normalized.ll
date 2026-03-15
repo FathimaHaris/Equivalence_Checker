@@ -1,33 +1,26 @@
-; ModuleID = '/tmp/equivalence_checker/max_c_opt_display.bc'
-source_filename = "/tmp/equivalence_checker/max_c_harness.c"
+; ModuleID = '/tmp/equivalence_checker/bitops_c_opt_display.bc'
+source_filename = "/tmp/equivalence_checker/bitops_c_harness.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
 
 @.str = private unnamed_addr constant [2 x i8] c"a\00", align 1
 @.str.1 = private unnamed_addr constant [2 x i8] c"b\00", align 1
-@.str.2 = private unnamed_addr constant [7 x i8] c"result\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
-define dso_local i32 @max(i32 noundef %0, i32 noundef %1) #0 {
-  %3 = icmp sgt i32 %0, %1
-  br i1 %3, label %4, label %5
-
-4:                                                ; preds = %2
-  br label %6
-
-5:                                                ; preds = %2
-  br label %6
-
-6:                                                ; preds = %5, %4
-  %.0 = phi i32 [ %0, %4 ], [ %1, %5 ]
-  ret i32 %.0
+define dso_local i32 @bitops(i32 noundef %0, i32 noundef %1) #0 {
+  %3 = and i32 %0, %1
+  %4 = or i32 %0, %1
+  %5 = xor i32 %0, %1
+  %6 = add nsw i32 %3, %4
+  %7 = sub nsw i32 %6, %5
+  ret i32 %7
 }
 
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @main() #0 {
   %1 = alloca i32, align 4
   %2 = alloca i32, align 4
-  %3 = alloca [1 x i32], align 4
+  %3 = alloca i32, align 4
   call void @klee_make_symbolic(ptr noundef %1, i64 noundef 4, ptr noundef @.str)
   call void @klee_make_symbolic(ptr noundef %2, i64 noundef 4, ptr noundef @.str.1)
   %4 = load i32, ptr %1, align 4
@@ -58,20 +51,12 @@ define dso_local i32 @main() #0 {
   %20 = zext i1 %19 to i32
   %21 = sext i32 %20 to i64
   call void @klee_assume(i64 noundef %21)
-  %22 = getelementptr inbounds [1 x i32], ptr %3, i64 0, i64 0
-  call void @klee_make_symbolic(ptr noundef %22, i64 noundef 4, ptr noundef @.str.2)
-  %23 = getelementptr inbounds [1 x i32], ptr %3, i64 0, i64 0
-  %24 = load i32, ptr %23, align 4
-  %25 = load i32, ptr %1, align 4
-  %26 = load i32, ptr %2, align 4
-  %27 = call i32 @max(i32 noundef %25, i32 noundef %26)
-  %28 = icmp eq i32 %24, %27
-  %29 = zext i1 %28 to i32
-  %30 = sext i32 %29 to i64
-  call void @klee_assume(i64 noundef %30)
-  %31 = getelementptr inbounds [1 x i32], ptr %3, i64 0, i64 0
-  %32 = load i32, ptr %31, align 4
-  ret i32 %32
+  %22 = load i32, ptr %1, align 4
+  %23 = load i32, ptr %2, align 4
+  %24 = call i32 @bitops(i32 noundef %22, i32 noundef %23)
+  store volatile i32 %24, ptr %3, align 4
+  %25 = load volatile i32, ptr %3, align 4
+  ret i32 %25
 }
 
 declare void @klee_make_symbolic(ptr noundef, i64 noundef, ptr noundef) #1

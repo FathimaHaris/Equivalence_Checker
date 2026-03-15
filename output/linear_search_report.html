@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EQ·CHECK — linear_search</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{background:#0a0c0f;color:#c8d0dc;font-family:'Inter',sans-serif;font-size:14px;padding:40px 24px 80px}
+.wrap{max-width:1100px;margin:0 auto}
+.header{text-align:center;margin-bottom:36px}
+.header-title{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:600;letter-spacing:.08em;color:#fff}
+.header-title span{color:#00e5ff}
+.header-sub{color:#4a5568;font-size:13px;margin-top:6px}
+.verdict{border-radius:12px;padding:28px;text-align:center;margin-bottom:28px;border:1px solid rgba(5,150,105,.3);background:rgba(255,255,255,.02)}
+.verdict-icon{font-size:44px}
+.verdict-text{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#059669;margin-top:8px}
+.verdict-sub{color:#4a5568;font-size:13px;margin-top:5px}
+.stats-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}
+.stat-box{flex:1;min-width:110px;background:#111318;border:1px solid #2a3040;border-radius:10px;padding:16px;text-align:center}
+.stat-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#fff}
+.stat-key{font-size:11px;color:#4a5568;text-transform:uppercase;letter-spacing:.06em;margin-top:4px}
+.section{background:#111318;border:1px solid #2a3040;border-radius:12px;padding:22px;margin-bottom:22px}
+.section-title{font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:#00e5ff;letter-spacing:.1em;text-transform:uppercase;margin-bottom:14px}
+.path-note{background:rgba(255,209,102,.05);border:1px solid rgba(255,209,102,.2);border-radius:8px;padding:12px 16px;font-size:13px;color:#ffd166;margin-bottom:22px}
+.ce-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ce-box{background:rgba(255,255,255,.03);border:1px solid #2a3040;border-radius:8px;padding:14px}
+.ce-box-title{font-family:'JetBrains Mono',monospace;font-size:11px;color:#4a5568;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px}
+.ce-val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:700}
+.c-val{color:#00e096} .r-val{color:#ff4d6d} .in-val{color:#ffd166}
+.diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:2px;border-radius:10px;overflow:hidden;border:1px solid #1e2229}
+.diff-panel{background:#060809;font-family:'JetBrains Mono',monospace;font-size:12px}
+.diff-hdr{background:#0d1015;padding:9px 14px;font-size:11px;color:#4a5568;border-bottom:1px solid #1e2229;display:flex;align-items:center;gap:8px}
+.badge{padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700}
+.badge-c{background:rgba(0,229,255,.1);color:#00e5ff;border:1px solid rgba(0,229,255,.2)}
+.badge-r{background:rgba(255,77,109,.1);color:#ff8c9e;border:1px solid rgba(255,77,109,.25)}
+.diff-body{overflow-x:auto;max-height:500px;overflow-y:auto}
+table{border-collapse:collapse;width:100%}
+.hl{background:rgba(255,77,109,.12);border-left:3px solid #ff4d6d}
+.hl .dc{color:#fff}
+.ln{width:40px;padding:3px 8px;text-align:right;color:#2a3040;user-select:none;font-size:11px}
+.dc{padding:3px 12px;white-space:pre;color:#4a5568;font-size:12px;line-height:1.6}
+.ar{width:22px;text-align:center;color:#ff4d6d;font-size:12px}
+.diff-label{background:rgba(255,77,109,.15);color:#ff4d6d;font-size:9px;padding:1px 5px;border-radius:3px;margin-left:6px;font-family:'JetBrains Mono',monospace;vertical-align:middle}
+.smt-row{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;font-family:'JetBrains Mono',monospace;font-size:13px}
+.smt-label{color:#4a5568;font-size:11px;width:80px;flex-shrink:0;padding-top:2px}
+.smt-val{color:#c8d0dc}
+.smt-val.diverge{color:#ffd166;font-weight:600}
+pre.suggestion{background:#060809;border:1px solid rgba(0,229,255,.12);border-radius:8px;padding:16px;font-family:'JetBrains Mono',monospace;font-size:12px;color:#c8d0dc;line-height:1.8;white-space:pre-wrap;word-break:break-word}
+.footer{text-align:center;color:#2a3040;font-size:12px;margin-top:36px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div class="header-title">EQ<span>·</span>CHECK Report</div>
+    <div class="header-sub">C ↔ Rust Semantic Equivalence · <code style="color:#ffd166">linear_search()</code></div>
+  </div>
+
+  <div class="verdict">
+    <div class="verdict-icon">✓</div>
+    <div class="verdict-text">SEMANTICALLY EQUIVALENT</div>
+    <div class="verdict-sub">/tmp/.tmpffkAjf/10_array_search.c &nbsp;↔&nbsp; /tmp/.tmpffkAjf/10_array_search.rs</div>
+  </div>
+
+  <div class="stats-row">
+      <div class="stat-box"><div class="stat-val">7</div><div class="stat-key">C Paths</div></div>
+      <div class="stat-box"><div class="stat-val">8</div><div class="stat-key">Rust Paths</div></div>
+      <div class="stat-box"><div class="stat-val">56</div><div class="stat-key">Inputs Tested</div></div>
+      <div class="stat-box"><div class="stat-val">2.69s</div><div class="stat-key">Time</div></div>
+    </div>
+  <div class="path-note">⚠ Rust has 1 more path(s) than C. This is expected — Rust's compiler inserts implicit safety checks (integer overflow guards, bounds checks) that create extra branches absent in C. These are <strong>not</strong> bugs.</div>
+  
+  <div class="section">
+      <div class="section-title">⟨/⟩ Source Comparison</div>
+      
+      <div class="diff-grid">
+        <div class="diff-panel">
+          <div class="diff-hdr"><span class="badge badge-c">C</span> Source of truth</div>
+          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">int linear_search(int target) {</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">    int arr[6];</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    arr[0] = 3;</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">    arr[1] = 7;</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">    arr[2] = 1;</td><td class="ar"></td></tr><tr class=""><td class="ln">6</td><td class="dc">    arr[3] = 9;</td><td class="ar"></td></tr><tr class=""><td class="ln">7</td><td class="dc">    arr[4] = 4;</td><td class="ar"></td></tr><tr class=""><td class="ln">8</td><td class="dc">    arr[5] = 6;</td><td class="ar"></td></tr><tr class=""><td class="ln">9</td><td class="dc"></td><td class="ar"></td></tr><tr class=""><td class="ln">10</td><td class="dc">    int i = 0;</td><td class="ar"></td></tr><tr class=""><td class="ln">11</td><td class="dc">    int found = -1;</td><td class="ar"></td></tr><tr class=""><td class="ln">12</td><td class="dc">    while (i &lt; 6) {</td><td class="ar"></td></tr><tr class=""><td class="ln">13</td><td class="dc">        if (arr[i] == target) {</td><td class="ar"></td></tr><tr class=""><td class="ln">14</td><td class="dc">            found = i;</td><td class="ar"></td></tr><tr class=""><td class="ln">15</td><td class="dc">            break;</td><td class="ar"></td></tr><tr class=""><td class="ln">16</td><td class="dc">        }</td><td class="ar"></td></tr><tr class=""><td class="ln">17</td><td class="dc">        i = i + 1;</td><td class="ar"></td></tr><tr class=""><td class="ln">18</td><td class="dc">    }</td><td class="ar"></td></tr><tr class=""><td class="ln">19</td><td class="dc">    return found;</td><td class="ar"></td></tr><tr class=""><td class="ln">20</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
+        </div>
+        <div class="diff-panel">
+          <div class="diff-hdr"><span class="badge badge-r">RUST</span> Migration under verification</div>
+          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">// Auto-generated by DIAGRUST</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">// Compiler-in-the-Loop C to Rust Transpiler</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc"></td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">pub fn linear_search(target: i32) -&gt; i32 {</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">    let mut arr: [i32; 6] = [0; 6];</td><td class="ar"></td></tr><tr class=""><td class="ln">6</td><td class="dc">    arr[0] = 3;</td><td class="ar"></td></tr><tr class=""><td class="ln">7</td><td class="dc">    arr[1] = 7;</td><td class="ar"></td></tr><tr class=""><td class="ln">8</td><td class="dc">    arr[2] = 1;</td><td class="ar"></td></tr><tr class=""><td class="ln">9</td><td class="dc">    arr[3] = 9;</td><td class="ar"></td></tr><tr class=""><td class="ln">10</td><td class="dc">    arr[4] = 4;</td><td class="ar"></td></tr><tr class=""><td class="ln">11</td><td class="dc">    arr[5] = 6;</td><td class="ar"></td></tr><tr class=""><td class="ln">12</td><td class="dc">    let mut i: i32 = 0;</td><td class="ar"></td></tr><tr class=""><td class="ln">13</td><td class="dc">    let mut found: i32 = -1;</td><td class="ar"></td></tr><tr class=""><td class="ln">14</td><td class="dc">    while i &lt; 6 {</td><td class="ar"></td></tr><tr class=""><td class="ln">15</td><td class="dc">        if arr[(i) as usize] == target {</td><td class="ar"></td></tr><tr class=""><td class="ln">16</td><td class="dc">            found = i;</td><td class="ar"></td></tr><tr class=""><td class="ln">17</td><td class="dc">            break;</td><td class="ar"></td></tr><tr class=""><td class="ln">18</td><td class="dc">        }</td><td class="ar"></td></tr><tr class=""><td class="ln">19</td><td class="dc">        i = i + 1;</td><td class="ar"></td></tr><tr class=""><td class="ln">20</td><td class="dc">    }</td><td class="ar"></td></tr><tr class=""><td class="ln">21</td><td class="dc">    return found;</td><td class="ar"></td></tr><tr class=""><td class="ln">22</td><td class="dc">}</td><td class="ar"></td></tr><tr class=""><td class="ln">23</td><td class="dc"></td><td class="ar"></td></tr></table></div>
+        </div>
+      </div>
+    </div>
+
+
+  <div class="footer">EQ·CHECK · C is the source of truth · Rust is the migration under verification</div>
+</div>
+</body>
+</html>

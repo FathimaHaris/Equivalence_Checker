@@ -4,54 +4,91 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16
 target triple = "x86_64-pc-linux-gnu"
 
 @.str = private unnamed_addr constant [2 x i8] c"x\00", align 1
+@.str.1 = private unnamed_addr constant [3 x i8] c"lo\00", align 1
+@.str.2 = private unnamed_addr constant [3 x i8] c"hi\00", align 1
+@.str.3 = private unnamed_addr constant [7 x i8] c"result\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
-define dso_local i32 @in_range(i32 noundef %0) #0 {
-  %2 = icmp slt i32 %0, 0
-  br i1 %2, label %3, label %4
+define dso_local i32 @in_range(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
+  %4 = icmp sge i32 %0, %1
+  br i1 %4, label %5, label %7
 
-3:                                                ; preds = %1
-  br label %8
+5:                                                ; preds = %3
+  %6 = icmp sle i32 %0, %2
+  br label %7
 
-4:                                                ; preds = %1
-  %5 = icmp sle i32 %0, 10
-  br i1 %5, label %6, label %7
-
-6:                                                ; preds = %4
-  br label %8
-
-7:                                                ; preds = %4
-  br label %8
-
-8:                                                ; preds = %7, %6, %3
-  %.0 = phi i32 [ -1, %3 ], [ 1, %6 ], [ %0, %7 ]
-  ret i32 %.0
+7:                                                ; preds = %5, %3
+  %8 = phi i1 [ false, %3 ], [ %6, %5 ]
+  %9 = select i1 %8, i32 1, i32 0
+  ret i32 %9
 }
 
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @main() #0 {
   %1 = alloca i32, align 4
   %2 = alloca i32, align 4
+  %3 = alloca i32, align 4
+  %4 = alloca [1 x i32], align 4
   call void @klee_make_symbolic(ptr noundef %1, i64 noundef 4, ptr noundef @.str)
-  %3 = load i32, ptr %1, align 4
-  %4 = icmp sge i32 %3, 0
-  br i1 %4, label %5, label %8
+  call void @klee_make_symbolic(ptr noundef %2, i64 noundef 4, ptr noundef @.str.1)
+  call void @klee_make_symbolic(ptr noundef %3, i64 noundef 4, ptr noundef @.str.2)
+  %5 = load i32, ptr %1, align 4
+  %6 = icmp sge i32 %5, 0
+  br i1 %6, label %7, label %10
 
-5:                                                ; preds = %0
-  %6 = load i32, ptr %1, align 4
-  %7 = icmp sle i32 %6, 100
-  br label %8
+7:                                                ; preds = %0
+  %8 = load i32, ptr %1, align 4
+  %9 = icmp sle i32 %8, 100
+  br label %10
 
-8:                                                ; preds = %5, %0
-  %9 = phi i1 [ false, %0 ], [ %7, %5 ]
-  %10 = zext i1 %9 to i32
-  %11 = sext i32 %10 to i64
-  call void @klee_assume(i64 noundef %11)
-  %12 = load i32, ptr %1, align 4
-  %13 = call i32 @in_range(i32 noundef %12)
-  store volatile i32 %13, ptr %2, align 4
-  %14 = load volatile i32, ptr %2, align 4
-  ret i32 %14
+10:                                               ; preds = %7, %0
+  %11 = phi i1 [ false, %0 ], [ %9, %7 ]
+  %12 = zext i1 %11 to i32
+  %13 = sext i32 %12 to i64
+  call void @klee_assume(i64 noundef %13)
+  %14 = load i32, ptr %2, align 4
+  %15 = icmp sge i32 %14, 0
+  br i1 %15, label %16, label %19
+
+16:                                               ; preds = %10
+  %17 = load i32, ptr %2, align 4
+  %18 = icmp sle i32 %17, 100
+  br label %19
+
+19:                                               ; preds = %16, %10
+  %20 = phi i1 [ false, %10 ], [ %18, %16 ]
+  %21 = zext i1 %20 to i32
+  %22 = sext i32 %21 to i64
+  call void @klee_assume(i64 noundef %22)
+  %23 = load i32, ptr %3, align 4
+  %24 = icmp sge i32 %23, 0
+  br i1 %24, label %25, label %28
+
+25:                                               ; preds = %19
+  %26 = load i32, ptr %3, align 4
+  %27 = icmp sle i32 %26, 100
+  br label %28
+
+28:                                               ; preds = %25, %19
+  %29 = phi i1 [ false, %19 ], [ %27, %25 ]
+  %30 = zext i1 %29 to i32
+  %31 = sext i32 %30 to i64
+  call void @klee_assume(i64 noundef %31)
+  %32 = getelementptr inbounds [1 x i32], ptr %4, i64 0, i64 0
+  call void @klee_make_symbolic(ptr noundef %32, i64 noundef 4, ptr noundef @.str.3)
+  %33 = getelementptr inbounds [1 x i32], ptr %4, i64 0, i64 0
+  %34 = load i32, ptr %33, align 4
+  %35 = load i32, ptr %1, align 4
+  %36 = load i32, ptr %2, align 4
+  %37 = load i32, ptr %3, align 4
+  %38 = call i32 @in_range(i32 noundef %35, i32 noundef %36, i32 noundef %37)
+  %39 = icmp eq i32 %34, %38
+  %40 = zext i1 %39 to i32
+  %41 = sext i32 %40 to i64
+  call void @klee_assume(i64 noundef %41)
+  %42 = getelementptr inbounds [1 x i32], ptr %4, i64 0, i64 0
+  %43 = load i32, ptr %42, align 4
+  ret i32 %43
 }
 
 declare void @klee_make_symbolic(ptr noundef, i64 noundef, ptr noundef) #1

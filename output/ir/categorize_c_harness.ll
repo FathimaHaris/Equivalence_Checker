@@ -1,5 +1,5 @@
-; ModuleID = '/tmp/equivalence_checker/max_c_harness.c'
-source_filename = "/tmp/equivalence_checker/max_c_harness.c"
+; ModuleID = '/tmp/equivalence_checker/categorize_c_harness.c'
+source_filename = "/tmp/equivalence_checker/categorize_c_harness.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
 
@@ -8,7 +8,7 @@ target triple = "x86_64-pc-linux-gnu"
 @.str.2 = private unnamed_addr constant [7 x i8] c"result\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
-define dso_local i32 @max(i32 noundef %0, i32 noundef %1) #0 {
+define dso_local i32 @categorize(i32 noundef %0, i32 noundef %1) #0 {
   %3 = alloca i32, align 4
   %4 = alloca i32, align 4
   %5 = alloca i32, align 4
@@ -17,21 +17,37 @@ define dso_local i32 @max(i32 noundef %0, i32 noundef %1) #0 {
   %6 = load i32, ptr %4, align 4
   %7 = load i32, ptr %5, align 4
   %8 = icmp sgt i32 %6, %7
-  br i1 %8, label %9, label %11
+  br i1 %8, label %9, label %14
 
 9:                                                ; preds = %2
   %10 = load i32, ptr %4, align 4
-  store i32 %10, ptr %3, align 4
-  br label %13
+  %11 = icmp sgt i32 %10, 10
+  br i1 %11, label %12, label %13
 
-11:                                               ; preds = %2
-  %12 = load i32, ptr %5, align 4
-  store i32 %12, ptr %3, align 4
-  br label %13
+12:                                               ; preds = %9
+  store i32 3, ptr %3, align 4
+  br label %19
 
-13:                                               ; preds = %11, %9
-  %14 = load i32, ptr %3, align 4
-  ret i32 %14
+13:                                               ; preds = %9
+  store i32 2, ptr %3, align 4
+  br label %19
+
+14:                                               ; preds = %2
+  %15 = load i32, ptr %5, align 4
+  %16 = icmp sgt i32 %15, 10
+  br i1 %16, label %17, label %18
+
+17:                                               ; preds = %14
+  store i32 -1, ptr %3, align 4
+  br label %19
+
+18:                                               ; preds = %14
+  store i32 0, ptr %3, align 4
+  br label %19
+
+19:                                               ; preds = %18, %17, %13, %12
+  %20 = load i32, ptr %3, align 4
+  ret i32 %20
 }
 
 ; Function Attrs: noinline nounwind uwtable
@@ -77,7 +93,7 @@ define dso_local i32 @main() #0 {
   %25 = load i32, ptr %24, align 4
   %26 = load i32, ptr %2, align 4
   %27 = load i32, ptr %3, align 4
-  %28 = call i32 @max(i32 noundef %26, i32 noundef %27)
+  %28 = call i32 @categorize(i32 noundef %26, i32 noundef %27)
   %29 = icmp eq i32 %25, %28
   %30 = zext i1 %29 to i32
   %31 = sext i32 %30 to i64

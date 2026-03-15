@@ -1,5 +1,5 @@
-; ModuleID = '/tmp/equivalence_checker/add_rs_opt_display.bc'
-source_filename = "add_rust_harness.cf448f61-cgu.0"
+; ModuleID = '/tmp/equivalence_checker/bitops_rs_opt_display.bc'
+source_filename = "bitops_rust_harness.7057a6bc-cgu.0"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-unknown-linux-gnu"
 
@@ -7,9 +7,13 @@ target triple = "x86_64-unknown-linux-gnu"
 @alloc_d0e6abc3fdad902977b26dc7b6a8e735 = private unnamed_addr constant <{ [2 x i8] }> <{ [2 x i8] c"b\00" }>, align 1
 
 ; Function Attrs: nonlazybind uwtable
-define i32 @_ZN16add_rust_harness3add17hf21f225b8d854c0bE(i32 %a, i32 %b) unnamed_addr #0 {
+define i32 @_ZN19bitops_rust_harness6bitops17h0478d0698c213b2dE(i32 %a, i32 %b) unnamed_addr #0 {
 start:
-  %0 = add i32 %a, %b
+  %x = and i32 %a, %b
+  %y = or i32 %a, %b
+  %z = xor i32 %a, %b
+  %_6 = add i32 %x, %y
+  %0 = sub i32 %_6, %z
   ret i32 %0
 }
 
@@ -60,7 +64,7 @@ bb13:                                             ; preds = %bb12, %bb11
   call void @klee_assume(i32 %_27)
   %_33 = load i32, ptr %a, align 4, !noundef !2
   %_34 = load i32, ptr %b, align 4, !noundef !2
-  %4 = call i32 @_ZN16add_rust_harness3add17hf21f225b8d854c0bE(i32 %_33, i32 %_34)
+  %4 = call i32 @_ZN19bitops_rust_harness6bitops17h0478d0698c213b2dE(i32 %_33, i32 %_34)
   ret i32 %4
 }
 

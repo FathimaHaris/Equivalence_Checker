@@ -1,83 +1,54 @@
 {
   "verdict": "NotEquivalent",
-  "paths_compared": 5,
+  "paths_compared": 1,
   "counterexample": {
     "inputs": [
       [
-        "a",
-        1
-      ],
-      [
-        "b",
-        0
-      ]
-    ],
-    "input_strings": [
-      [
-        "a",
-        "1"
-      ],
-      [
-        "b",
-        "0"
+        "score",
+        74
       ]
     ],
     "c_behavior": {
-      "return_value": "1",
-      "stdout": [],
+      "return_value": "2",
+      "stdout": [
+        "2"
+      ],
       "stderr": [],
       "globals": []
     },
     "rust_behavior": {
-      "return_value": "0",
-      "stdout": [],
+      "return_value": "1",
+      "stdout": [
+        "1"
+      ],
       "stderr": [],
       "globals": []
     },
     "differences": [
       {
         "kind": "ReturnValue",
-        "c_value": "1",
-        "rust_value": "0"
+        "c_value": "2",
+        "rust_value": "1"
       }
     ]
   },
-  "time_taken": 0.976974911,
+  "time_taken": 0.096868991,
   "statistics": {
-    "total_paths_c": 2,
+    "total_paths_c": 4,
     "total_paths_rust": 4,
-    "merged_pairs": 5,
+    "merged_pairs": 0,
     "z3_queries": 0,
     "z3_time_ms": 0
   },
   "c_path": {
-    "id": "C-1",
+    "id": "C-2",
     "program": "C",
     "constraints": [
-      "(Sle 0\n              N0:(ReadLSB w32 0 a))",
+      "(Sle 0\n              N0:(ReadLSB w32 0 score))",
       "(Sle N0 100)",
-      "(Sle 0\n              N1:(ReadLSB w32 0 b))",
-      "(Sle N1 100)",
-      "(Eq false (Slt N1 N0))"
-    ],
-    "return_expr": "N1",
-    "witness": [],
-    "observables": {
-      "stdout": [],
-      "stderr": [],
-      "global_writes": [],
-      "file_ops": []
-    },
-    "label_map": {
-      "N0": "a",
-      "N1": "b"
-    }
-  },
-  "rust_path": {
-    "id": "Rust-1",
-    "program": "Rust",
-    "constraints": [
-      "(Eq false\n             (Sle 0\n                  (ReadLSB w32 0 a)))"
+      "(Eq false (Sle 90 N0))",
+      "(Eq false (Sle 75 N0))",
+      "(Sle 60 N0)"
     ],
     "return_expr": null,
     "witness": [],
@@ -86,7 +57,24 @@
       "stderr": [],
       "global_writes": [],
       "file_ops": []
-    },
-    "label_map": {}
+    }
+  },
+  "rust_path": {
+    "id": "Rust-3",
+    "program": "Rust",
+    "constraints": [
+      "(Sle 0\n              N0:(ReadLSB w32 0 score))",
+      "(Extract 0 (ZExt w8 (Sle N0 100)))",
+      "(Eq false (Sle 90 N0))",
+      "(Sle 75 N0)"
+    ],
+    "return_expr": null,
+    "witness": [],
+    "observables": {
+      "stdout": [],
+      "stderr": [],
+      "global_writes": [],
+      "file_ops": []
+    }
   }
 }

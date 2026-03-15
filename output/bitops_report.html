@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>EQ·CHECK — max</title>
+<title>EQ·CHECK — bitops</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -12,9 +12,9 @@ body{background:#0a0c0f;color:#c8d0dc;font-family:'Inter',sans-serif;font-size:1
 .header-title{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:600;letter-spacing:.08em;color:#fff}
 .header-title span{color:#00e5ff}
 .header-sub{color:#4a5568;font-size:13px;margin-top:6px}
-.verdict{border-radius:12px;padding:28px;text-align:center;margin-bottom:28px;border:1px solid rgba(220,38,38,.3);background:rgba(255,255,255,.02)}
+.verdict{border-radius:12px;padding:28px;text-align:center;margin-bottom:28px;border:1px solid rgba(5,150,105,.3);background:rgba(255,255,255,.02)}
 .verdict-icon{font-size:44px}
-.verdict-text{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#dc2626;margin-top:8px}
+.verdict-text{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;color:#059669;margin-top:8px}
 .verdict-sub{color:#4a5568;font-size:13px;margin-top:5px}
 .stats-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:24px}
 .stat-box{flex:1;min-width:110px;background:#111318;border:1px solid #2a3040;border-radius:10px;padding:16px;text-align:center}
@@ -54,48 +54,39 @@ pre.suggestion{background:#060809;border:1px solid rgba(0,229,255,.12);border-ra
 <div class="wrap">
   <div class="header">
     <div class="header-title">EQ<span>·</span>CHECK Report</div>
-    <div class="header-sub">C ↔ Rust Semantic Equivalence · <code style="color:#ffd166">max()</code></div>
+    <div class="header-sub">C ↔ Rust Semantic Equivalence · <code style="color:#ffd166">bitops()</code></div>
   </div>
+
   <div class="verdict">
-    <div class="verdict-icon">✗</div>
-    <div class="verdict-text">NOT EQUIVALENT</div>
-    <div class="verdict-sub">/tmp/.tmpDWVj1H/test2_max.c &nbsp;↔&nbsp; /tmp/.tmpDWVj1H/test2_max.rs</div>
+    <div class="verdict-icon">✓</div>
+    <div class="verdict-text">SEMANTICALLY EQUIVALENT</div>
+    <div class="verdict-sub">/tmp/.tmprW1ojO/test5_bitops.c &nbsp;↔&nbsp; /tmp/.tmprW1ojO/test5_bitops.rs</div>
   </div>
+
   <div class="stats-row">
-      <div class="stat-box"><div class="stat-val">2</div><div class="stat-key">C Paths</div></div>
-      <div class="stat-box"><div class="stat-val">4</div><div class="stat-key">Rust Paths</div></div>
-      <div class="stat-box"><div class="stat-val">5</div><div class="stat-key">Inputs Tested</div></div>
-      <div class="stat-box"><div class="stat-val">0.98s</div><div class="stat-key">Time</div></div>
+      <div class="stat-box"><div class="stat-val">1</div><div class="stat-key">C Paths</div></div>
+      <div class="stat-box"><div class="stat-val">3</div><div class="stat-key">Rust Paths</div></div>
+      <div class="stat-box"><div class="stat-val">1</div><div class="stat-key">Inputs Tested</div></div>
+      <div class="stat-box"><div class="stat-val">0.09s</div><div class="stat-key">Time</div></div>
     </div>
-  <div class="path-note">⚠ Rust has 2 more path(s) than C. This is expected — Rust inserts implicit safety checks that create extra branches absent in C.</div>
-  <div class="section">
-      <div class="section-title">⚡ Counterexample</div>
-      <div class="ce-grid">
-        <div class="ce-box"><div class="ce-box-title">Diverging Input</div><div style="margin-bottom:5px"><span style="color:#4a5568;font-family:'JetBrains Mono',monospace;font-size:12px;display:inline-block;width:50px">a</span><span class="ce-val in-val"> = 1</span></div><div style="margin-bottom:5px"><span style="color:#4a5568;font-family:'JetBrains Mono',monospace;font-size:12px;display:inline-block;width:50px">b</span><span class="ce-val in-val"> = 0</span></div></div>
-        <div class="ce-box" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:center">
-          <div><div class="ce-box-title">C Returns</div><div class="ce-val c-val">1</div></div>
-          <div><div class="ce-box-title">Rust Returns</div><div class="ce-val r-val">0</div></div>
-        </div>
-      </div>
-    </div>
+  <div class="path-note">⚠ Rust has 2 more path(s) than C. This is expected — Rust's compiler inserts implicit safety checks (integer overflow guards, bounds checks) that create extra branches absent in C. These are <strong>not</strong> bugs.</div>
+  
   <div class="section">
       <div class="section-title">⟨/⟩ Source Comparison</div>
-      <div style="margin-bottom:14px;background:rgba(255,255,255,.02);border:1px solid #2a3040;border-radius:8px;padding:14px">
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4a5568;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Divergent Branch Condition</div>
-          <div class="smt-row"><span class="smt-label">C:</span><span class="smt-val diverge">a &gt;= 0</span></div>
-          <div class="smt-row"><span class="smt-label">Rust:</span><span class="smt-val diverge">false == a &gt;= 0</span></div>
-        </div>
+      
       <div class="diff-grid">
         <div class="diff-panel">
           <div class="diff-hdr"><span class="badge badge-c">C</span> Source of truth</div>
-          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">// TEST 2: Max — NOT EQUIVALENT (Rust returns wrong branch)</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">int max(int a, int b) {</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    if (a &gt; b) return a;</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">    return b;</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
+          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">// TEST 5: Bitwise ops — FULLY EQUIVALENT</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">int bitops(int a, int b) {</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    int x = a &amp; b;</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">    int y = a | b;</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">    int z = a ^ b;</td><td class="ar"></td></tr><tr class=""><td class="ln">6</td><td class="dc">    return x + y - z;</td><td class="ar"></td></tr><tr class=""><td class="ln">7</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
         </div>
         <div class="diff-panel">
           <div class="diff-hdr"><span class="badge badge-r">RUST</span> Migration under verification</div>
-          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">pub fn max(a: i32, b: i32) -&gt; i32 {</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">    if a &gt; b { b }   // BUG: returns b instead of a</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    else { b }</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
+          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">pub fn bitops(a: i32, b: i32) -&gt; i32 {</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">    let x = a &amp; b;</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    let y = a | b;</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">    let z = a ^ b;</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">    x + y - z</td><td class="ar"></td></tr><tr class=""><td class="ln">6</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
         </div>
       </div>
     </div>
+
+
   <div class="footer">EQ·CHECK · C is the source of truth · Rust is the migration under verification</div>
 </div>
 </body>

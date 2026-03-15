@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>EQ·CHECK — max</title>
+<title>EQ·CHECK — categorize</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -54,26 +54,28 @@ pre.suggestion{background:#060809;border:1px solid rgba(0,229,255,.12);border-ra
 <div class="wrap">
   <div class="header">
     <div class="header-title">EQ<span>·</span>CHECK Report</div>
-    <div class="header-sub">C ↔ Rust Semantic Equivalence · <code style="color:#ffd166">max()</code></div>
+    <div class="header-sub">C ↔ Rust Semantic Equivalence · <code style="color:#ffd166">categorize()</code></div>
   </div>
+
   <div class="verdict">
     <div class="verdict-icon">✗</div>
     <div class="verdict-text">NOT EQUIVALENT</div>
-    <div class="verdict-sub">/tmp/.tmpDWVj1H/test2_max.c &nbsp;↔&nbsp; /tmp/.tmpDWVj1H/test2_max.rs</div>
+    <div class="verdict-sub">/tmp/.tmpb6jt1P/test14_nested.c &nbsp;↔&nbsp; /tmp/.tmpb6jt1P/test14_nested.rs</div>
   </div>
+
   <div class="stats-row">
-      <div class="stat-box"><div class="stat-val">2</div><div class="stat-key">C Paths</div></div>
-      <div class="stat-box"><div class="stat-val">4</div><div class="stat-key">Rust Paths</div></div>
-      <div class="stat-box"><div class="stat-val">5</div><div class="stat-key">Inputs Tested</div></div>
-      <div class="stat-box"><div class="stat-val">0.98s</div><div class="stat-key">Time</div></div>
+      <div class="stat-box"><div class="stat-val">4</div><div class="stat-key">C Paths</div></div>
+      <div class="stat-box"><div class="stat-val">6</div><div class="stat-key">Rust Paths</div></div>
+      <div class="stat-box"><div class="stat-val">0</div><div class="stat-key">Inputs Tested</div></div>
+      <div class="stat-box"><div class="stat-val">0.06s</div><div class="stat-key">Time</div></div>
     </div>
-  <div class="path-note">⚠ Rust has 2 more path(s) than C. This is expected — Rust inserts implicit safety checks that create extra branches absent in C.</div>
+  <div class="path-note">⚠ Rust has 2 more path(s) than C. This is expected — Rust's compiler inserts implicit safety checks (integer overflow guards, bounds checks) that create extra branches absent in C. These are <strong>not</strong> bugs.</div>
   <div class="section">
       <div class="section-title">⚡ Counterexample</div>
       <div class="ce-grid">
-        <div class="ce-box"><div class="ce-box-title">Diverging Input</div><div style="margin-bottom:5px"><span style="color:#4a5568;font-family:'JetBrains Mono',monospace;font-size:12px;display:inline-block;width:50px">a</span><span class="ce-val in-val"> = 1</span></div><div style="margin-bottom:5px"><span style="color:#4a5568;font-family:'JetBrains Mono',monospace;font-size:12px;display:inline-block;width:50px">b</span><span class="ce-val in-val"> = 0</span></div></div>
+        <div class="ce-box"><div class="ce-box-title">Diverging Input</div><div style="margin-bottom:5px"><span style="color:#4a5568;font-family:'JetBrains Mono',monospace;font-size:12px;display:inline-block;width:50px">a</span><span class="ce-val in-val"> = 0</span></div><div style="margin-bottom:5px"><span style="color:#4a5568;font-family:'JetBrains Mono',monospace;font-size:12px;display:inline-block;width:50px">b</span><span class="ce-val in-val"> = 0</span></div></div>
         <div class="ce-box" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:center">
-          <div><div class="ce-box-title">C Returns</div><div class="ce-val c-val">1</div></div>
+          <div><div class="ce-box-title">C Returns</div><div class="ce-val c-val">0</div></div>
           <div><div class="ce-box-title">Rust Returns</div><div class="ce-val r-val">0</div></div>
         </div>
       </div>
@@ -82,20 +84,23 @@ pre.suggestion{background:#060809;border:1px solid rgba(0,229,255,.12);border-ra
       <div class="section-title">⟨/⟩ Source Comparison</div>
       <div style="margin-bottom:14px;background:rgba(255,255,255,.02);border:1px solid #2a3040;border-radius:8px;padding:14px">
           <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#4a5568;text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px">Divergent Branch Condition</div>
-          <div class="smt-row"><span class="smt-label">C:</span><span class="smt-val diverge">a &gt;= 0</span></div>
-          <div class="smt-row"><span class="smt-label">Rust:</span><span class="smt-val diverge">false == a &gt;= 0</span></div>
+          <div class="smt-row"><span class="smt-label">C:</span><span class="smt-val diverge">0</span></div>
+          <div class="smt-row"><span class="smt-label">Rust:</span><span class="smt-val diverge">1</span></div>
+          <div style="font-size:11px;color:#4a5568;margin-top:8px">These conditions produce different results when the counterexample inputs are substituted.</div>
         </div>
       <div class="diff-grid">
         <div class="diff-panel">
           <div class="diff-hdr"><span class="badge badge-c">C</span> Source of truth</div>
-          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">// TEST 2: Max — NOT EQUIVALENT (Rust returns wrong branch)</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">int max(int a, int b) {</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    if (a &gt; b) return a;</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">    return b;</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
+          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">// TEST 14: Nested conditions — NOT EQUIVALENT (different tie-break)</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">int categorize(int a, int b) {</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    if (a &gt; b) {</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">        if (a &gt; 10) return 3;</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">        return 2;</td><td class="ar"></td></tr><tr class=""><td class="ln">6</td><td class="dc">    } else {</td><td class="ar"></td></tr><tr class=""><td class="ln">7</td><td class="dc">        if (b &gt; 10) return -1;</td><td class="ar"></td></tr><tr class=""><td class="ln">8</td><td class="dc">        return 0;</td><td class="ar"></td></tr><tr class=""><td class="ln">9</td><td class="dc">    }</td><td class="ar"></td></tr><tr class=""><td class="ln">10</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
         </div>
         <div class="diff-panel">
           <div class="diff-hdr"><span class="badge badge-r">RUST</span> Migration under verification</div>
-          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">pub fn max(a: i32, b: i32) -&gt; i32 {</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">    if a &gt; b { b }   // BUG: returns b instead of a</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">    else { b }</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
+          <div class="diff-body"><table><tr class=""><td class="ln">1</td><td class="dc">pub fn categorize(a: i32, b: i32) -&gt; i32 {</td><td class="ar"></td></tr><tr class=""><td class="ln">2</td><td class="dc">    if a &gt; b {</td><td class="ar"></td></tr><tr class=""><td class="ln">3</td><td class="dc">        if a &gt; 10 { 3 } else { 2 }</td><td class="ar"></td></tr><tr class=""><td class="ln">4</td><td class="dc">    } else {</td><td class="ar"></td></tr><tr class=""><td class="ln">5</td><td class="dc">        if b &gt; 10 { 1 }  // BUG: returns 1 instead of -1</td><td class="ar"></td></tr><tr class=""><td class="ln">6</td><td class="dc">        else { 0 }</td><td class="ar"></td></tr><tr class=""><td class="ln">7</td><td class="dc">    }</td><td class="ar"></td></tr><tr class=""><td class="ln">8</td><td class="dc">}</td><td class="ar"></td></tr></table></div>
         </div>
       </div>
     </div>
+
+
   <div class="footer">EQ·CHECK · C is the source of truth · Rust is the migration under verification</div>
 </div>
 </body>

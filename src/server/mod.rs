@@ -1,10 +1,4 @@
 // src/server/mod.rs
-// ═══════════════════════════════════════════════════════
-// Tiny Axum web server
-//   GET  /    → static/index.html
-//   POST /run → multipart form → full pipeline → NDJSON
-// ═══════════════════════════════════════════════════════
-
 use axum::{
     extract::Multipart,
     http::{HeaderMap, HeaderValue, StatusCode, header},
@@ -16,9 +10,7 @@ use serde::Serialize;
 use std::net::SocketAddr;
 use anyhow::Result;
 
-use crate::types::{AnalysisConfig, InputBound, Verdict};
-
-// ── Launch ────────────────────────────────────────────
+use crate::types::{AnalysisConfig, Verdict};
 
 pub async fn launch(port: u16) -> Result<()> {
     let app = Router::new()
@@ -40,8 +32,6 @@ pub async fn launch(port: u16) -> Result<()> {
     Ok(())
 }
 
-// ── GET / ─────────────────────────────────────────────
-
 async fn serve_ui() -> impl IntoResponse {
     let html = std::fs::read_to_string("static/index.html").unwrap_or_else(|_| {
         "<h1>UI not found</h1><p>Place <code>static/index.html</code> in project root.</p>"
@@ -51,8 +41,6 @@ async fn serve_ui() -> impl IntoResponse {
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("text/html; charset=utf-8"));
     (headers, html)
 }
-
-// ── Wire types ────────────────────────────────────────
 
 #[derive(Serialize, Clone)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -64,7 +52,6 @@ pub enum Msg {
         paths_rust:     usize,
         inputs_tested:  usize,
         counterexample: Option<CeMsg>,
-        /// Semantic diff — None when programs are equivalent
         diff:           Option<SemanticDiffMsg>,
         time_taken:     f64,
     },
@@ -78,41 +65,24 @@ pub struct CeMsg {
     pub r_return: String,
 }
 
-/// What the browser needs to render the semantic diff panel.
-/// All data here comes from KLEE constraints, NOT text comparison.
 #[derive(Serialize, Clone)]
 pub struct SemanticDiffMsg {
-    // ── Human-readable divergent condition ────────────
-    /// e.g.  "x <= 10"
-    pub condition_c:    String,
-    /// e.g.  "x < 10"
-    pub condition_rust: String,
-
-    // ── Source location (1-based line numbers) ────────
+    pub condition_c:       String,
+    pub condition_rust:    String,
     pub diverge_line_c:    Option<usize>,
     pub diverge_line_rust: Option<usize>,
-
-    // ── Source windows (±5 lines around divergence) ───
-    pub c_lines:    Vec<DiffLine>,
-    pub rust_lines: Vec<DiffLine>,
-
-    // ── Fix suggestion ────────────────────────────────
-    pub suggestion: String,
-
-    // ── Informational ─────────────────────────────────
-    /// Extra paths Rust has vs C (safety check branches)
-    pub extra_rust_paths: usize,
+    pub c_lines:           Vec<DiffLine>,
+    pub rust_lines:        Vec<DiffLine>,
+    pub suggestion:        String,
+    pub extra_rust_paths:  usize,
 }
 
 #[derive(Serialize, Clone)]
 pub struct DiffLine {
     pub num:       usize,
     pub text:      String,
-    /// true = this is the semantically divergent line
     pub highlight: bool,
 }
-
-// ── POST /run ─────────────────────────────────────────
 
 async fn run_check(mut multipart: Multipart) -> impl IntoResponse {
     let mut c_name    = String::new();
@@ -184,8 +154,6 @@ async fn run_check(mut multipart: Multipart) -> impl IntoResponse {
     (StatusCode::OK, [("content-type", "application/x-ndjson")], body)
 }
 
-// ── Pipeline ──────────────────────────────────────────
-
 fn run_pipeline(config: AnalysisConfig) -> Vec<Msg> {
     let mut msgs: Vec<Msg> = Vec::new();
 
@@ -254,35 +222,25 @@ fn run_pipeline(config: AnalysisConfig) -> Vec<Msg> {
         Err(e)   => { log!("warn", format!("  ⚠ Report failed: {}", e)); }
     }
 
-    // ── Build counterexample message ──────────────────
     let ce = result.counterexample.as_ref().map(|c| CeMsg {
         inputs:   c.inputs.clone(),
         c_return: c.c_behavior.return_value.clone(),
         r_return: c.rust_behavior.return_value.clone(),
     });
 
-    // ── Build SEMANTIC diff (from KLEE constraints) ───
-    // Only when NOT equivalent.
-    // We use crate::diff::find_semantic_divergence which compares
-    // KLEE path constraints — NOT source text lines.
     let diff: Option<SemanticDiffMsg> = if result.verdict != Verdict::Equivalent {
         let c_src    = std::fs::read_to_string(&config.c_file).unwrap_or_default();
         let rust_src = std::fs::read_to_string(&config.rust_file).unwrap_or_default();
-
         let sem = crate::diff::find_semantic_divergence(
             result.c_path.as_ref(),
             result.rust_path.as_ref(),
             &c_src,
             &rust_src,
         );
-
-        let extra_rust = result.statistics.total_paths_rust
+        let extra = result.statistics.total_paths_rust
             .saturating_sub(result.statistics.total_paths_c);
-
-        Some(build_semantic_diff_msg(sem, &c_src, &rust_src, extra_rust))
-    } else {
-        None
-    };
+        Some(build_semantic_diff_msg(sem, &c_src, &rust_src, extra))
+    } else { None };
 
     msgs.push(Msg::Result {
         equivalent:     result.verdict == Verdict::Equivalent,
@@ -297,25 +255,19 @@ fn run_pipeline(config: AnalysisConfig) -> Vec<Msg> {
     msgs
 }
 
-// ── Semantic diff → wire message ──────────────────────
-
-/// Convert the output of `crate::diff::find_semantic_divergence`
-/// into the JSON struct the browser renders.
 fn build_semantic_diff_msg(
-    sem:      Option<crate::diff::SemanticDiff>,
-    c_src:    &str,
-    rust_src: &str,
+    sem:              Option<crate::diff::SemanticDiff>,
+    c_src:            &str,
+    rust_src:         &str,
     extra_rust_paths: usize,
 ) -> SemanticDiffMsg {
     let c_lines_raw:    Vec<&str> = c_src.lines().collect();
     let rust_lines_raw: Vec<&str> = rust_src.lines().collect();
 
     match sem {
-        // ── We have a KLEE-derived semantic diff ──────
         Some(sd) => {
-            let div_c    = sd.c_line.as_ref().map(|(n, _)| *n);    // 1-based
+            let div_c    = sd.c_line.as_ref().map(|(n, _)| *n);
             let div_rust = sd.rust_line.as_ref().map(|(n, _)| *n);
-
             SemanticDiffMsg {
                 condition_c:       sd.human_c.clone(),
                 condition_rust:    sd.human_rust.clone(),
@@ -327,10 +279,6 @@ fn build_semantic_diff_msg(
                 extra_rust_paths,
             }
         }
-
-        // ── KLEE constraints didn't yield a diff ─────
-        // Fall back to showing both full sources side-by-side
-        // with no line highlighted. The suggestion explains why.
         None => SemanticDiffMsg {
             condition_c:       "—".into(),
             condition_rust:    "—".into(),
@@ -347,14 +295,12 @@ fn build_semantic_diff_msg(
     }
 }
 
-/// Build a window of lines (±6 around highlight, capped at 60 total).
 fn make_window(lines: &[&str], highlight: Option<usize>) -> Vec<DiffLine> {
     let max = 60usize;
     let start = if let Some(h) = highlight {
         h.saturating_sub(6).min(lines.len().saturating_sub(max))
     } else { 0 };
     let end = (start + max).min(lines.len());
-
     (start..end).map(|i| DiffLine {
         num:       i + 1,
         text:      lines[i].to_string(),
@@ -362,19 +308,18 @@ fn make_window(lines: &[&str], highlight: Option<usize>) -> Vec<DiffLine> {
     }).collect()
 }
 
-// ── Helpers ───────────────────────────────────────────
-
-fn parse_bounds(s: &str) -> Result<Vec<InputBound>> {
+fn parse_bounds(s: &str) -> anyhow::Result<Vec<crate::types::InputBound>> {
     let mut out = Vec::new();
     for part in s.split(',') {
         let p: Vec<&str> = part.trim().split(':').collect();
         if p.len() != 3 {
             return Err(anyhow::anyhow!("Invalid bounds '{}'. Use name:min:max", part));
         }
-        out.push(InputBound {
-            name: p[0].to_string(),
-            min:  p[1].parse::<i64>()?,
-            max:  p[2].parse::<i64>()?,
+        out.push(crate::types::InputBound {
+            name:       p[0].to_string(),
+            min:        p[1].parse::<i64>()?,
+            max:        p[2].parse::<i64>()?,
+            param_type: crate::types::ParamType::Integer,
         });
     }
     Ok(out)

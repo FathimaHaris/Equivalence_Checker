@@ -3,8 +3,8 @@ source_filename = "/tmp/equivalence_checker/add_c_harness.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
 
-@.str = private unnamed_addr constant [2 x i8] c"x\00", align 1
-@.str.1 = private unnamed_addr constant [2 x i8] c"y\00", align 1
+@.str = private unnamed_addr constant [2 x i8] c"a\00", align 1
+@.str.1 = private unnamed_addr constant [2 x i8] c"b\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @add(i32 noundef %0, i32 noundef %1) #0 {
@@ -58,8 +58,8 @@ define dso_local i32 @main() #0 {
   %23 = load i32, ptr %2, align 4
   %24 = load i32, ptr %3, align 4
   %25 = call i32 @add(i32 noundef %23, i32 noundef %24)
-  store i32 %25, ptr %4, align 4
-  %26 = load i32, ptr %4, align 4
+  store volatile i32 %25, ptr %4, align 4
+  %26 = load volatile i32, ptr %4, align 4
   ret i32 %26
 }
 

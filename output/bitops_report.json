@@ -2,11 +2,11 @@
   "verdict": "Equivalent",
   "paths_compared": 3,
   "counterexample": null,
-  "time_taken": 0.265920386,
+  "time_taken": 0.085166703,
   "statistics": {
     "total_paths_c": 1,
     "total_paths_rust": 3,
-    "merged_pairs": 3,
+    "merged_pairs": 1,
     "z3_queries": 3,
     "z3_time_ms": 0
   },

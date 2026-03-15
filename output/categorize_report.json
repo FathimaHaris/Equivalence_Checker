@@ -1,25 +1,21 @@
 {
   "verdict": "NotEquivalent",
-  "paths_compared": 1,
+  "paths_compared": 0,
   "counterexample": {
     "inputs": [
       [
-        "x",
+        "a",
         0
       ],
       [
-        "lo",
-        0
-      ],
-      [
-        "hi",
+        "b",
         0
       ]
     ],
     "c_behavior": {
-      "return_value": "1",
+      "return_value": "0",
       "stdout": [
-        "1"
+        "0"
       ],
       "stderr": [],
       "globals": []
@@ -35,31 +31,31 @@
     "differences": [
       {
         "kind": "ReturnValue",
-        "c_value": "1",
+        "c_value": "0",
         "rust_value": "0"
       }
     ]
   },
-  "time_taken": 0.102867124,
+  "time_taken": 0.05922829,
   "statistics": {
-    "total_paths_c": 1,
+    "total_paths_c": 4,
     "total_paths_rust": 6,
     "merged_pairs": 0,
-    "z3_queries": 0,
+    "z3_queries": 2,
     "z3_time_ms": 0
   },
   "c_path": {
     "id": "C-1",
     "program": "C",
     "constraints": [
-      "(Sle 0\n              N0:(ReadLSB w32 0 x))",
+      "(Sle 0\n              N0:(ReadLSB w32 0 a))",
       "(Sle N0 100)",
-      "(Sle 0\n              N1:(ReadLSB w32 0 lo))",
+      "(Sle 0\n              N1:(ReadLSB w32 0 b))",
       "(Sle N1 100)",
-      "(Sle 0\n              N2:(ReadLSB w32 0 hi))",
-      "(Sle N2 100)"
+      "(Eq false (Slt N1 N0))",
+      "(Eq false (Slt 10 N1))"
     ],
-    "return_expr": "(Select w32 (And (Sle N1 N0) (Sle N0 N2))\n                         1\n                         0)",
+    "return_expr": "0",
     "witness": [],
     "observables": {
       "stdout": [],
@@ -72,15 +68,14 @@
     "id": "Rust-4",
     "program": "Rust",
     "constraints": [
-      "(Sle 0\n              N0:(ReadLSB w32 0 x))",
+      "(Sle 0\n              N0:(ReadLSB w32 0 a))",
       "(Extract 0 (ZExt w8 (Sle N0 100)))",
-      "(Sle 0\n              N1:(ReadLSB w32 0 lo))",
+      "(Sle 0\n              N1:(ReadLSB w32 0 b))",
       "(Extract 0 (ZExt w8 (Sle N1 100)))",
-      "(Sle 0\n              N2:(ReadLSB w32 0 hi))",
-      "(Extract 0 (ZExt w8 (Sle N2 100)))",
-      "(Eq false (Slt N1 N0))"
+      "(Eq false (Slt N1 N0))",
+      "(Slt 10 N1)"
     ],
-    "return_expr": "0",
+    "return_expr": "1",
     "witness": [],
     "observables": {
       "stdout": [],

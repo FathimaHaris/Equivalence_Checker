@@ -1,108 +1,15 @@
 {
-  "verdict": "NotEquivalent",
-  "paths_compared": 8,
-  "counterexample": {
-    "inputs": [
-      [
-        "x",
-        1
-      ],
-      [
-        "low",
-        4
-      ],
-      [
-        "high",
-        0
-      ]
-    ],
-    "c_behavior": {
-      "return_value": "4",
-      "stdout": [
-        "4"
-      ],
-      "stderr": [],
-      "globals": []
-    },
-    "rust_behavior": {
-      "return_value": "0",
-      "stdout": [
-        "0"
-      ],
-      "stderr": [],
-      "globals": []
-    },
-    "differences": [
-      {
-        "kind": "ReturnValue",
-        "c_value": "4",
-        "rust_value": "0"
-      }
-    ]
-  },
-  "time_taken": 1.247341387,
+  "verdict": "Equivalent",
+  "paths_compared": 18,
+  "counterexample": null,
+  "time_taken": 0.028861971,
   "statistics": {
     "total_paths_c": 3,
     "total_paths_rust": 6,
-    "merged_pairs": 0,
-    "z3_queries": 7,
-    "z3_time_ms": 4650
+    "merged_pairs": 18,
+    "z3_queries": 18,
+    "z3_time_ms": 340
   },
-  "c_path": {
-    "id": "C-3",
-    "program": "C",
-    "constraints": [
-      "(Sle 0\n              N0:(ReadLSB w32 0 x))",
-      "(Sle N0 100)",
-      "(Sle 0\n              N1:(ReadLSB w32 0 low))",
-      "(Sle N1 100)",
-      "(Sle 0\n              N2:(ReadLSB w32 0 high))",
-      "(Sle N2 100)",
-      "(Slt N0 N1)"
-    ],
-    "return_expr": null,
-    "witness": [
-      [
-        "high",
-        0
-      ]
-    ],
-    "observables": {
-      "stdout": [],
-      "stderr": [],
-      "global_writes": [],
-      "file_ops": []
-    }
-  },
-  "rust_path": {
-    "id": "Rust-5",
-    "program": "Rust",
-    "constraints": [
-      "(Sle 0\n              N0:(ReadLSB w32 0 x))",
-      "(Extract 0 (ZExt w8 (Sle N0 100)))",
-      "(Sle 0\n              N1:(ReadLSB w32 0 low))",
-      "(Extract 0 (ZExt w8 (Sle N1 100)))",
-      "(Sle 0\n              N2:(ReadLSB w32 0 high))",
-      "(Extract 0 (ZExt w8 (Sle N2 100)))",
-      "(Eq false (Slt N2 N0))",
-      "(Slt N0 N1)"
-    ],
-    "return_expr": null,
-    "witness": [
-      [
-        "x",
-        0
-      ],
-      [
-        "low",
-        4
-      ]
-    ],
-    "observables": {
-      "stdout": [],
-      "stderr": [],
-      "global_writes": [],
-      "file_ops": []
-    }
-  }
+  "c_path": null,
+  "rust_path": null
 }

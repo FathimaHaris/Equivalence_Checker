@@ -1,42 +1,57 @@
-// src/types/mod.rs
-// ═══════════════════════════════════════════════════════
-// Shared data types used by ALL modules
-// ═══════════════════════════════════════════════════════
-
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-// ───────────────────────────────────────────────────────
-// INPUT TYPES
-// ───────────────────────────────────────────────────────
-
-/// Everything the user provides as input
 #[derive(Debug, Clone)]
 pub struct AnalysisConfig {
-    /// Path to C source file
     pub c_file: String,
-    /// Path to Rust source file  
     pub rust_file: String,
-    /// Name of function to check
     pub function_name: String,
-    /// Input bounds for symbolic execution
     pub bounds: Vec<InputBound>,
-    /// Maximum paths KLEE should explore
     pub max_paths: u32,
-    /// Maximum time in seconds
     pub timeout: u32,
 }
 
-/// Bound for one input variable
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParamType {
+    Integer,
+    Float,
+}
+
+impl Default for ParamType {
+    fn default() -> Self { ParamType::Integer }
+}
+
 #[derive(Debug, Clone)]
 pub struct InputBound {
     pub name: String,
     pub min: i64,
     pub max: i64,
+    pub param_type: ParamType,
 }
 
-// ───────────────────────────────────────────────────────
-// VALIDATION TYPES
-// ───────────────────────────────────────────────────────
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ReturnKind {
+    Integer,
+    Float,
+    Bool,
+    Void,
+}
+
+impl Default for ReturnKind {
+    fn default() -> Self { ReturnKind::Integer }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct EquivalenceDetail {
+    pub inputs_tested: u32,
+    pub return_value_match: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DivergingInput {
+    pub name: String,
+    pub value: i64,
+}
 
 #[derive(Debug, Clone)]
 pub struct ValidationResult {
@@ -53,29 +68,18 @@ pub struct FunctionSignature {
     pub return_type: String,
 }
 
-// ───────────────────────────────────────────────────────
-// PATH SUMMARY TYPES (from KLEE)
-// ───────────────────────────────────────────────────────
-
-/// Complete symbolic path summary for ONE execution path
-/// This matches your DFD2_symbolic.jpg - output of step 0.5.4
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PathSummary {
-    /// Unique ID for this path
     pub id: String,
-    /// Which program: C or Rust
     pub program: ProgramKind,
-    /// Path constraints in SMT-LIB format (from KLEE .kquery)
     pub constraints: Vec<String>,
-    /// Return expression in SMT-LIB format
     pub return_expr: Option<String>,
-    /// Concrete witness values from KLEE
     pub witness: Vec<(String, i64)>,
-    /// Observable effects (stdout, stderr, globals)
     pub observables: ObservableEffects,
+    #[serde(default)]
+    pub label_map: HashMap<String, String>,
 }
 
-/// Observable effects captured during instrumentation
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ObservableEffects {
     pub stdout: Vec<String>,
@@ -97,11 +101,6 @@ pub enum ProgramKind {
     Rust,
 }
 
-// ───────────────────────────────────────────────────────
-// EQUIVALENCE CHECKER TYPES (for Z3)
-// ───────────────────────────────────────────────────────
-
-/// Result of equivalence checking (matches your DFD)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EquivalenceResult {
     pub verdict: Verdict,
@@ -109,28 +108,27 @@ pub struct EquivalenceResult {
     pub counterexample: Option<Counterexample>,
     pub time_taken: f64,
     pub statistics: CheckerStatistics,
-    pub c_path:  Option<PathSummary>,   
+    pub c_path: Option<PathSummary>,
     pub rust_path: Option<PathSummary>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum Verdict {
-    Equivalent,      // UNSAT - programs are equivalent
-    NotEquivalent,   // SAT - found counterexample
-    Unknown,         // Z3 could not decide
+    Equivalent,
+    NotEquivalent,
+    Unknown,
 }
 
-/// Counterexample found by Z3 (SAT result)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Counterexample {
     pub inputs: Vec<(String, i64)>,
+    pub input_strings: Vec<(String, String)>,
     pub c_behavior: ConcreteBehavior,
     pub rust_behavior: ConcreteBehavior,
     pub differences: Vec<Difference>,
 }
 
-/// Concrete program behavior for specific inputs
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ConcreteBehavior {
     pub return_value: String,
     pub stdout: Vec<String>,
@@ -154,7 +152,6 @@ pub enum DifferenceKind {
     FileOperation,
 }
 
-/// Statistics from the checker
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CheckerStatistics {
     pub total_paths_c: usize,
@@ -163,10 +160,6 @@ pub struct CheckerStatistics {
     pub z3_queries: u32,
     pub z3_time_ms: u64,
 }
-
-// ───────────────────────────────────────────────────────
-// ERROR TYPES
-// ───────────────────────────────────────────────────────
 
 #[derive(Debug, thiserror::Error)]
 pub enum CheckerError {

@@ -1,5 +1,5 @@
-; ModuleID = '/tmp/equivalence_checker/max_c_opt_display.bc'
-source_filename = "/tmp/equivalence_checker/max_c_harness.c"
+; ModuleID = '/tmp/equivalence_checker/categorize_c_opt_display.bc'
+source_filename = "/tmp/equivalence_checker/categorize_c_harness.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
 
@@ -8,18 +8,32 @@ target triple = "x86_64-pc-linux-gnu"
 @.str.2 = private unnamed_addr constant [7 x i8] c"result\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
-define dso_local i32 @max(i32 noundef %0, i32 noundef %1) #0 {
+define dso_local i32 @categorize(i32 noundef %0, i32 noundef %1) #0 {
   %3 = icmp sgt i32 %0, %1
-  br i1 %3, label %4, label %5
+  br i1 %3, label %4, label %8
 
 4:                                                ; preds = %2
-  br label %6
+  %5 = icmp sgt i32 %0, 10
+  br i1 %5, label %6, label %7
 
-5:                                                ; preds = %2
-  br label %6
+6:                                                ; preds = %4
+  br label %12
 
-6:                                                ; preds = %5, %4
-  %.0 = phi i32 [ %0, %4 ], [ %1, %5 ]
+7:                                                ; preds = %4
+  br label %12
+
+8:                                                ; preds = %2
+  %9 = icmp sgt i32 %1, 10
+  br i1 %9, label %10, label %11
+
+10:                                               ; preds = %8
+  br label %12
+
+11:                                               ; preds = %8
+  br label %12
+
+12:                                               ; preds = %11, %10, %7, %6
+  %.0 = phi i32 [ 3, %6 ], [ 2, %7 ], [ -1, %10 ], [ 0, %11 ]
   ret i32 %.0
 }
 
@@ -64,7 +78,7 @@ define dso_local i32 @main() #0 {
   %24 = load i32, ptr %23, align 4
   %25 = load i32, ptr %1, align 4
   %26 = load i32, ptr %2, align 4
-  %27 = call i32 @max(i32 noundef %25, i32 noundef %26)
+  %27 = call i32 @categorize(i32 noundef %25, i32 noundef %26)
   %28 = icmp eq i32 %24, %27
   %29 = zext i1 %28 to i32
   %30 = sext i32 %29 to i64

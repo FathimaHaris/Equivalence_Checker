@@ -4,8 +4,8 @@ target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-f80:128-n8:16
 target triple = "x86_64-pc-linux-gnu"
 
 @.str = private unnamed_addr constant [2 x i8] c"x\00", align 1
-@.str.1 = private unnamed_addr constant [4 x i8] c"low\00", align 1
-@.str.2 = private unnamed_addr constant [5 x i8] c"high\00", align 1
+@.str.1 = private unnamed_addr constant [3 x i8] c"lo\00", align 1
+@.str.2 = private unnamed_addr constant [3 x i8] c"hi\00", align 1
 
 ; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @clamp(i32 noundef %0, i32 noundef %1, i32 noundef %2) #0 {
